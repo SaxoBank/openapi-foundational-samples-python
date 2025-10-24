@@ -17,10 +17,10 @@ requirements.
 - **OAuth 2.0 Authorization Code Flow with PKCE**  
   → `auth/auth_sample_PKCE.py`
 
-- **Basics, Including Streaming Prices Example**
+- **Basics, Including Streaming Prices Example**  
   → `basics/...`
 
-- **Order Examples**
+- **Order Examples**  
   → `orders/...`
 
 ## Requirements
