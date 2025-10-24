@@ -20,8 +20,6 @@ requirements.
 - **Basics, Including Streaming Prices Example**  
   → `basics/...`
 
-- **Order Examples**  
-  → `orders/...`
 
 ## Requirements
 
