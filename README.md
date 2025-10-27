@@ -42,11 +42,21 @@ pip install -r requirements.txt
 2. Edit the `.env` file and provide the required values:
 
    ```env
-   AppKey=your_client_id
-   AppSecret=your_client_secret
-   RedirectUrl=http://localhost:3000/callback
-   AuthorizationUrl=https://your-auth-server.com/oauth/authorize
-   TokenUrl=https://your-auth-server.com/oauth/token
+APP_NAME=your_app_name_here
+
+APP_KEY=your_app_key_here
+
+AUTHORIZATION_ENDPOINT=https://sim.logonvalidation.net/authorize
+
+TOKEN_ENDPOINT=https://sim.logonvalidation.net/token
+
+GRANT_TYPE=Code
+
+OPEN_API_BASE_URL=https://gateway.saxobank.com/sim/openapi/
+
+REDIRECT_URLS=http://localhost:3000/callback
+
+APP_SECRET=your_app_secret_here
    ```
 
 > **Note:** Ensure that the `RedirectUrl` matches the redirect URI configured in your application on the developer portal.
