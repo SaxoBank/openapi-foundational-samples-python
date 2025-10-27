@@ -59,7 +59,7 @@ pip install -r requirements.txt
     APP_SECRET=your_app_secret_here
    ```
 
-> **Note:** Ensure that the `RedirectUrl` matches the redirect URI configured in your application on the developer portal. Also make sure that the environment specified in the endpoints and base URL variables is correct to the app you are using. 
+> **Note:** Ensure that the `REDIRECT_URLS` value matches the redirect URI configured in your application on the developer portal. Also make sure that the environment specified in the `AUTHORIZATION_ENDPOINT`, `TOKEN_ENDPOINT`, and `OPEN_API_BASE_URL` variables is correct for the app and environment you are using. 
 
 
 
