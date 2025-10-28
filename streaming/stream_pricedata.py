@@ -3,7 +3,7 @@
 Basic console demo: Stream price quotes + balances from Saxo OpenAPI (SIM)
 - Subscribes to InfoPrices and Balances
 - Logs raw quotes (no calculations)
-- Uses corporate HTTP proxy for REST + WebSocket
+(No proxy code – direct connections)
 """
 
 import os
@@ -14,12 +14,12 @@ import threading
 from datetime import datetime
 import requests
 import traceback
+import logging
 
 # Logging setup
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from utils.logging_utils import setup_logging
 setup_logging()
-import logging
 
 try:
     import websocket  # websocket-client
@@ -37,35 +37,6 @@ WS_URL_TEMPLATE = "wss://sim-streaming.saxobank.com/sim/oapi/streaming/ws/connec
 
 BALANCES_REF_ID = "BALANCES"
 PRICES_REF_ID = "PRICES"
-
-# ---------- Proxy ----------
-# Just for saxo internal.....
-PROXY_URL = os.getenv("PROXY_URL", "http://usr:pwd@dk.proxy.mid.dom:80")
-
-def parse_proxy(url: str):
-    if "://" not in url:
-        url = "http://" + url
-    scheme, rest = url.split("://", 1)
-    auth_part, host_part = rest.split("@", 1) if "@" in rest else ("", rest)
-    user = pwd = None
-    if auth_part:
-        if ":" in auth_part:
-            user, pwd = auth_part.split(":", 1)
-        else:
-            user = auth_part
-    host = host_part
-    port = 80
-    if ":" in host_part:
-        host, port_str = host_part.rsplit(":", 1)
-        try:
-            port = int(port_str)
-        except ValueError:
-            pass
-    return scheme, host, port, user, pwd
-
-_scheme, proxy_host, proxy_port, proxy_user, proxy_pass = parse_proxy(PROXY_URL)
-PROXIES = {"http": PROXY_URL, "https": PROXY_URL}
-logging.info(f"Proxy configured: {PROXY_URL}")
 
 # ---------- Token / Client configuration ----------
 ACCESS_TOKEN = os.getenv("ACCESS_TOKEN")
@@ -96,13 +67,7 @@ def subscribe_prices(context_id: str):
     }
     headers = {"Authorization": f"Bearer {ACCESS_TOKEN}", "Content-Type": "application/json"}
     try:
-        r = requests.post(
-            SUBSCRIPTION_ENDPOINT,
-            json=payload,
-            headers=headers,
-            proxies=PROXIES,
-            timeout=15
-        )
+        r = requests.post(SUBSCRIPTION_ENDPOINT, json=payload, headers=headers, timeout=15)
     except requests.RequestException as e:
         logging.error(f"Price subscription network error: {e}")
         return False
@@ -111,7 +76,6 @@ def subscribe_prices(context_id: str):
         return True
     logging.error(f"Price subscription failed ({r.status_code}): {r.text[:300]}")
     return False
-
 
 def subscribe_balances(context_id: str):
     if not CLIENT_KEY:
@@ -124,20 +88,14 @@ def subscribe_balances(context_id: str):
     }
     headers = {"Authorization": f"Bearer {ACCESS_TOKEN}", "Content-Type": "application/json"}
     try:
-        r = requests.post(
-            BALANCES_SUBSCRIPTION_ENDPOINT,
-            json=payload,
-            headers=headers,
-            proxies=PROXIES,
-            timeout=15
-        )
+        r = requests.post(BALANCES_SUBSCRIPTION_ENDPOINT, json=payload, headers=headers, timeout=15)
     except requests.RequestException as e:
         logging.error(f"Balances subscription network error: {e}")
         return False
     if r.status_code == 201:
         logging.important(f"Balances subscription successful (RefId={BALANCES_REF_ID}).")
         return True
-    logging.error(f"Balances subscription failed ({r.status_code}): {r.text}")
+    logging.error(f"Balances subscription failed ({r.status_code}): {r.text[:300]}")
     return False
 
 # ---------- Decode ----------
@@ -176,7 +134,9 @@ def log_price_quotes(payload):
         printed += 1
         if printed >= 10:
             break
-    
+    if printed and len(quotes) > printed:
+        logging.debug(f"... {len(quotes) - printed} additional quote items suppressed.")
+
 def log_balances(payload):
     snapshot = payload.get("Snapshot") if isinstance(payload, dict) else None
     snap = snapshot or payload
@@ -226,13 +186,9 @@ def websocket_thread(context_id: str, stop_event: threading.Event):
             on_open=lambda ws: on_ws_open(ws)
         )
         ws_app.context_id = context_id
-        logging.info(f"Connecting {url} via proxy {proxy_host}:{proxy_port}")
+        logging.info(f"Connecting {url}")
         try:
             ws_app.run_forever(
-                http_proxy_host=proxy_host,
-                http_proxy_port=proxy_port,
-                http_proxy_auth=(proxy_user, proxy_pass) if proxy_user and proxy_pass else None,
-                proxy_type="http",
                 ping_interval=30,
                 ping_timeout=10,
             )
