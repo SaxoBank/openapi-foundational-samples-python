@@ -3,7 +3,6 @@
 Basic console demo: Stream price quotes + balances from Saxo OpenAPI (SIM)
 - Subscribes to InfoPrices and Balances
 - Logs raw quotes (no calculations)
-(No proxy code – direct connections)
 """
 
 import os
@@ -33,7 +32,7 @@ ASSET_TYPE = "FxSpot"
 
 SUBSCRIPTION_ENDPOINT = "https://gateway.saxobank.com/sim/openapi/trade/v1/infoprices/subscriptions"
 BALANCES_SUBSCRIPTION_ENDPOINT = "https://gateway.saxobank.com/sim/openapi/port/v1/balances/subscriptions"
-WS_URL_TEMPLATE = "wss://sim-streaming.saxobank.com/sim/oapi/streaming/ws/connect?ContextId={context_id}"
+WS_URL_TEMPLATE = "wss://streaming.saxobank.com/sim/openapi/streamingws/connect?ContextId={context_id}"
 
 BALANCES_REF_ID = "BALANCES"
 PRICES_REF_ID = "PRICES"
@@ -102,11 +101,11 @@ def subscribe_balances(context_id: str):
 def decode_message(message: bytes):
     try:
         idx = 0
-        _msg_id = int.from_bytes(message[idx:idx+8], "little"); idx += 8
+        _ = int.from_bytes(message[idx:idx+8], "little"); idx += 8  # message id (ignored)
         idx += 2  # version
         ref_len = message[idx]; idx += 1
         ref_id = message[idx:idx+ref_len].decode(); idx += ref_len
-        _fmt = message[idx]; idx += 1
+        _ = message[idx]; idx += 1  # format byte
         payload_size = int.from_bytes(message[idx:idx+4], "little"); idx += 4
         payload_raw = message[idx:idx+payload_size].decode()
         payload = json.loads(payload_raw)
@@ -138,13 +137,16 @@ def log_price_quotes(payload):
         logging.debug(f"... {len(quotes) - printed} additional quote items suppressed.")
 
 def log_balances(payload):
+    
     snapshot = payload.get("Snapshot") if isinstance(payload, dict) else None
     snap = snapshot or payload
     if not isinstance(snap, dict):
         logging.debug(f"Balances unexpected structure: {type(snap)}")
         return
+
     total = snap.get("TotalValue")
     logging.important(f"BALANCES TotalValue={total}")
+
 
 # ---------- WebSocket callbacks ----------
 def on_ws_message(ws, message):
