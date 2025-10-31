@@ -11,12 +11,18 @@ logging.
 
 **Available Scripts:**
 
+- **Authorization Code Flow**  
+    → `auth/auth_sample.py`
+  
+- **Authorization Code with PKCE**  
+    → `auth/auth_sample_PKCE.py`
+  
 - **Basic Websocket Streaming Example**  
   → `streaming/stream_balances.py`
 
 ## Setup
 
-1. **For Auth Samples:** Configure `.env` file (copy from `.env.example`)
+1. **For Auth Samples:** Configure `.env` file (copy from `.env.example`) with your own application details. See **Developer Portal Setup** notes below. 
 2. **For Streaming:** Set `ACCESS_TOKEN` environment variable or enter when prompted
 
 
