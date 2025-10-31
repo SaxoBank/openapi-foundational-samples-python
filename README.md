@@ -17,8 +17,8 @@ requirements.
 - **OAuth 2.0 Authorization Code Flow with PKCE**  
   → `auth/auth_sample_PKCE.py`
 
-- **Basics, Including Streaming Prices Example**  
-  → `basics/...`
+- **Basic Streaming Example**  
+  → `streaming/stream_balances.py...`
 
 
 ## Requirements
