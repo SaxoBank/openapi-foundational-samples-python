@@ -9,17 +9,18 @@ exchanges it for access and refresh tokens, and demonstrates token renewal.
 
 Setup Instructions:
 - Create a `.env` file in the same directory with the following variables:
-    AppKey=your_app_key_here
-    AppSecret=your_app_secret_here
-    RedirectUrl=http://localhost:3000/callback
-    AuthorizationUrl=https://example.com/oauth/authorize
-    TokenUrl=https://example.com/oauth/token
+    APP_KEY=your_app_key_here
+    APP_SECRET=your_app_secret_here
+    REDIRECT_URLS=http://localhost:3000/callback
+    AUTHORIZATION_ENDPOINT=https://example.com/oauth/authorize
+    TOKEN_ENDPOINT=https://example.com/oauth/token
 
 How It Works:
-- The server uses the `RedirectUrl` to determine:
+- The server uses the `REDIRECT_URLS` to determine:
     1. The port it should run on (e.g., `3000` from `http://localhost:3000/callback`).
     2. The path it should listen for (e.g., `/callback`)
 - If no port is specified in the redirect URL, the server defaults to port `80`.
+- There must be only one included to work with this example. 
 
 
 
@@ -60,7 +61,7 @@ def load_config(app=None):
 
     load_dotenv()
 
-    required_keys = ["AppKey", "AppSecret", "AuthorizationUrl", "TokenUrl", "RedirectUrl"]
+    required_keys = ["APP_KEY", "APP_SECRET", "AUTHORIZATION_ENDPOINT", "TOKEN_ENDPOINT", "REDIRECT_URLS"]
     config = {key: os.getenv(key) for key in required_keys}
 
     missing = [key for key, value in config.items() if not value]
@@ -71,11 +72,11 @@ def load_config(app=None):
         )
 
     # Validate and extract port from redirect URL
-    parsed = urlparse(config["RedirectUrl"])
+    parsed = urlparse(config["REDIRECT_URLS"])
 
     # Ensure path is not root
     if not parsed.path or parsed.path == "/":
-        raise ValueError(f"Redirect URL '{config['RedirectUrl']}' must include a non-root path (e.g., /callback).")
+        raise ValueError(f"Redirect URL '{config['REDIRECT_URLS']}' must include a non-root path (e.g., /callback).")
 
     # Determine port: use from URL if present, else default to 80
     port = parsed.port or 80
@@ -87,16 +88,16 @@ def load_config(app=None):
         logging.info(f"Using port {port} from redirect URL.")
 
     #Log final configuration
-    logging.info(f"Loaded config with redirect URL: {config['RedirectUrl']}")
-    logging.info(f"Authorization URL: {config['AuthorizationUrl']}")
-    logging.info(f"Token URL: {config['TokenUrl']}")
+    logging.info(f"Loaded config with redirect URL: {config['REDIRECT_URLS']}")
+    logging.info(f"Authorization URL: {config['AUTHORIZATION_ENDPOINT']}")
+    logging.info(f"Token URL: {config['TOKEN_ENDPOINT']}")
 
     return {
-        "APP_KEY": config["AppKey"],
-        "APP_SECRET": config["AppSecret"],
-        "REDIRECT_URL": config["RedirectUrl"],
-        "AUTHORIZATION_URL": config["AuthorizationUrl"],
-        "TOKEN_URL": config["TokenUrl"],
+        "APP_KEY": config["APP_KEY"],
+        "APP_SECRET": config["APP_SECRET"],
+        "REDIRECT_URL": config["REDIRECT_URLS"],
+        "AUTHORIZATION_URL": config["AUTHORIZATION_ENDPOINT"],
+        "TOKEN_URL": config["TOKEN_ENDPOINT"],
         "PORT": config["PORT"],
     }
 

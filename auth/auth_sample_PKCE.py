@@ -9,7 +9,7 @@ allowing you to authenticate and retrieve tokens from an OAuth provider using a 
 What it does:
 
 - Loads configuration from environment variables:
-  AppKey, RedirectUrl, AuthorizationEndpoint, and TokenUrl.
+  APP_KEY, REDIRECT_URLS, AUTHORIZATION_ENDPOINT, and TOKEN_ENDPOINT.
 - Parses the redirect URI to extract the port and path.
 - Generates a PKCE code verifier and challenge.
 - Constructs the authorization URL and starts a local HTTP server.
@@ -27,8 +27,9 @@ How to use it:
 
 Important:
 
-- Within the application registration, the `RedirectUrl` must include a non-root path (e.g., `http://localhost/test`).
+- Within the application registration, the `REDIRECT_URLS` must include a non-root path (e.g., `http://localhost/test`).
 - The redirect URL can have a path specified within the .env file, such as `http://localhost:8000/test`.
+- There must be only one included to work with this example. 
 - If not specified in the .env file, the default port is set to 80. 
     - Running on port 80 requires root privileges:
         sudo python3 oauth_pkce_server.py
@@ -64,7 +65,7 @@ setup_logging()
 load_dotenv()
 
 # Required environment variables
-required_keys = ["AppKey", "RedirectUrl", "AuthorizationUrl", "TokenUrl"]
+required_keys = ["APP_KEY", "REDIRECT_URLS", "AUTHORIZATION_ENDPOINT", "TOKEN_ENDPOINT"]
 config = {key: os.getenv(key) for key in required_keys}
 
 # Validate environment variables
@@ -73,15 +74,15 @@ if missing:
     raise EnvironmentError(f"Missing environment variables: {', '.join(missing)}")
 
 # Extract RedirectUrl and port 
-parsed = urlparse(config["RedirectUrl"])
+parsed = urlparse(config["REDIRECT_URLS"])
 
 #Default port is 80 -- http local host, where the redirect sits on. 
 config["PORT"] = parsed.port if parsed.port else 80
 config["REDIRECT_PATH"] = parsed.path
 
-logging.info(f"Loaded config with redirect URL: {config['RedirectUrl']}")
-logging.info(f"Authorization URL: {config['AuthorizationUrl']}")
-logging.info(f"Token URL: {config['TokenUrl']}")
+logging.info(f"Loaded config with redirect URL: {config['REDIRECT_URLS']}")
+logging.info(f"Authorization URL: {config['AUTHORIZATION_ENDPOINT']}")
+logging.info(f"Token URL: {config['TOKEN_ENDPOINT']}")
 
 # Generate PKCE code_verifier and code_challenge
 def generate_pkce_pair():
@@ -96,15 +97,15 @@ state = secrets.token_urlsafe(16)
 
 # Construct authorization URL
 authorization_url = (
-    f"{config['AuthorizationUrl'].rstrip('/')}?"
-    f"response_type=code&client_id={config['AppKey']}&redirect_uri={config['RedirectUrl']}"
+    f"{config['AUTHORIZATION_ENDPOINT'].rstrip('/')}?"
+    f"response_type=code&client_id={config['APP_KEY']}&redirect_uri={config['REDIRECT_URLS']}"
     f"&state={state}&code_challenge={code_challenge}&code_challenge_method=S256"
 )
 
 logging.important(f"Please visit the following URL to authorize the application: {authorization_url}")
 
 # Token endpoint
-token_url = f"{config['TokenUrl'].rstrip('/')}"
+token_url = f"{config['TOKEN_ENDPOINT'].rstrip('/')}"
 
 # HTTP handler
 class OAuthHandler(BaseHTTPRequestHandler):
@@ -130,9 +131,9 @@ class OAuthHandler(BaseHTTPRequestHandler):
             logging.info("Exchanging authorization code for tokens...")
             data = {
                 "grant_type": "authorization_code",
-                "client_id": config["AppKey"],
+                "client_id": config["APP_KEY"],
                 "code": code,
-                "redirect_uri": config["RedirectUrl"],
+                "redirect_uri": config["REDIRECT_URLS"],
                 "code_verifier": code_verifier
             }
             headers = {"Content-Type": "application/x-www-form-urlencoded"}
@@ -225,7 +226,7 @@ class OAuthHandler(BaseHTTPRequestHandler):
             refresh_data = {
                 "grant_type": "refresh_token",
                 "refresh_token": refresh_token,
-                "client_id": config["AppKey"],
+                "client_id": config["APP_KEY"],
                 "code_verifier": code_verifier
             }
             try:
