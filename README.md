@@ -19,6 +19,34 @@ logging.
 1. **For Auth Samples:** Configure `.env` file (copy from `.env.example`)
 2. **For Streaming:** Set `ACCESS_TOKEN` environment variable or enter when prompted
 
+
+## Authentication Samples
+
+Run OAuth 2.0 authentication flows to obtain access tokens:
+
+**Authorization Code Flow:**
+
+```bash
+python auth/auth_sample.py
+```
+
+**Authorization Code with PKCE:**
+
+```bash
+python auth/auth_sample_PKCE.py
+```
+
+Both samples will:
+
+- Open your browser for authentication
+- Exchange authorization code for access token
+- Display the access token for use in other samples
+
+**Prerequisites:**
+
+- Configure your `.env` file with app credentials from developer portal
+- Ensure redirect URI matches your portal configuration
+
 ## Balance Streaming
 
 Stream real-time balance updates via WebSocket:
@@ -29,6 +57,8 @@ python streaming/stream_balances.py
 ```
 
 Features: Auto ClientKey retrieval, reconnection, structured logging.
+
+This sample will not retrieve your access token for you. You can either adapt the authentication samples for this, or [use a 24 hour simulation token found on the developer portal.](https://www.developer.saxo/openapi/token)
 
 ## Developer Portal Setup
 
