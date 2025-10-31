@@ -64,9 +64,7 @@ This sample will not retrieve your access token for you. You can either adapt th
 
 Register your application at: <https://www.developer.saxo/openapi/appmanagement>
 
-- `auth_sample.py`: Authorization Code grant
-- `auth_sample_PKCE.py`: Authorization Code with PKCE grant
+The application values should be those used in the .env file. Make sure the application type (code or PKCE) matches the sample flow you wish to use. 
 
-Match redirect URIs between portal and `.env` file.
 
 
