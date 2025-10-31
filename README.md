@@ -18,7 +18,7 @@ requirements.
   → `auth/auth_sample_PKCE.py`
 
 - **Basic Streaming Example**  
-  → `streaming/stream_balances.py...`
+  → `streaming/stream_balances.py`
 
 
 ## Requirements
