@@ -11,9 +11,8 @@ logging.
 
 **Available Scripts:**
 
-- `auth/auth_sample.py` - OAuth 2.0 Authorization Code Flow
-- `auth/auth_sample_PKCE.py` - OAuth 2.0 with PKCE  
-- `streaming/stream_balances.py` - Real-time balance streaming
+- **Basic Websocket Streaming Example**  
+  → `streaming/stream_balances.py`
 
 ## Setup
 
