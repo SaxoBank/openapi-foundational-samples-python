@@ -17,7 +17,7 @@ requirements.
 - **OAuth 2.0 Authorization Code Flow with PKCE**  
   → `auth/auth_sample_PKCE.py`
 
-- **Basic Streaming Example**  
+- **Basic Websocket Streaming Example**  
   → `streaming/stream_balances.py`
 
 
