@@ -48,6 +48,8 @@ def load_config():
         config["STREAM_URL"] = "wss://sim-streaming.saxobank.com/sim/oapi/streaming/ws"
     elif "gateway.saxobank.com/openapi" in base_url:
         config["STREAM_URL"] = "wss://live-streaming.saxobank.com/openapi/streaming/ws"
+    else:
+        raise EnvironmentError(f"Unrecognized base URL: {base_url}. Expected 'gateway.saxobank.com/sim' or 'gateway.saxobank.com/openapi'")
     
     return config
 
