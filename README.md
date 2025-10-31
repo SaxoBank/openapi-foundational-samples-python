@@ -1,88 +1,42 @@
 
 # OpenAPI Python Samples
 
-This repository provides **concise Python examples** for implementing secure authentication and
-basic API interactions like placing a trade, searching a client up and more. The samples are
-designed to be easy to follow and include structured, color-coded logging to aid in debugging and
-development.
-To try these samples yourself, download/clone this repo and run the scripts after installing the
-requirements.
+Concise Python examples for Saxo OpenAPI authentication and real-time streaming with structured
+logging.
 
 
-## Features
+## Quick Start
 
-- **OAuth 2.0 Authorization Code Flow**  
-  → `auth/auth_sample.py`
+**Requirements:** Python 3.10+ and `pip install -r requirements.txt`
 
-- **OAuth 2.0 Authorization Code Flow with PKCE**  
-  → `auth/auth_sample_PKCE.py`
+**Available Scripts:**
 
 - **Basic Websocket Streaming Example**  
   → `streaming/stream_balances.py`
 
+## Setup
 
-## Requirements
+1. **For Auth Samples:** Configure `.env` file (copy from `.env.example`)
+2. **For Streaming:** Set `ACCESS_TOKEN` environment variable or enter when prompted
 
-- Python **3.10 or higher** (recommended)
+## Balance Streaming
 
-Install dependencies:
+Stream real-time balance updates via WebSocket:
 
 ```bash
-pip install -r requirements.txt
+export ACCESS_TOKEN="your_bearer_token"
+python streaming/stream_balances.py
 ```
 
-## Configuration
+Features: Auto ClientKey retrieval, reconnection, structured logging.
 
-1. Copy the example environment file:
+## Developer Portal Setup
 
-   ```bash
-   cp .env.example .env
-   ```
+Register your application at: <https://www.developer.saxo/openapi/appmanagement>
 
-2. Edit the `.env` file and provide the required values:
+- `auth_sample.py`: Authorization Code grant
+- `auth_sample_PKCE.py`: Authorization Code with PKCE grant
 
-   ```env
-    APP_NAME=your_app_name_here
-    
-    APP_KEY=your_app_key_here
-    
-    AUTHORIZATION_ENDPOINT=https://sim.logonvalidation.net/authorize
-    
-    TOKEN_ENDPOINT=https://sim.logonvalidation.net/token
-    
-    GRANT_TYPE=Code
-    
-    OPEN_API_BASE_URL=https://gateway.saxobank.com/sim/openapi/
-    
-    REDIRECT_URLS=http://localhost:3000/callback
-    
-    APP_SECRET=your_app_secret_here
-   ```
-
-> **Note:** Ensure that the `REDIRECT_URLS` value matches the redirect URI configured in your application on the developer portal. Also make sure that the environment specified in the `AUTHORIZATION_ENDPOINT`, `TOKEN_ENDPOINT`, and `OPEN_API_BASE_URL` variables is correct for the app and environment you are using. 
-
-
-
-## Running the Samples
-
-Before executing the samples, you must register an application on the Saxo developer portal:
-
-**Developer Portal App Management:**  
-https://www.developer.saxo/openapi/appmanagement
-
-### Application Setup
-
-Configure your application with the appropriate **OAuth 2.0 grant type** based on the sample you
-intend to run:
-
-| Sample File              | Required Grant Type             |
-|--------------------------|----------------------------------|
-| `auth_sample.py`         | Authorization Code              |
-| `auth_sample_PKCE.py`    | Authorization Code with PKCE    |
-
-Ensure that the **redirect URI** specified in the developer portal matches the `RedirectUrl` value
-in your `.env` file.
-Once your environment is configured and your application is registered on the developer portal, you
-can run the samples directly from the command line.
+Match redirect URIs between portal and `.env` file.
 
 
