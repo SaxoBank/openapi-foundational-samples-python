@@ -1,76 +1,129 @@
+# Saxo OpenAPI Python Authentication & Streaming
 
-# OpenAPI Python Samples
+Minimal Python implementation for Saxo Bank OpenAPI authentication and real-time streaming with
+automatic token management and refresh.
 
-Concise Python examples for Saxo OpenAPI authentication and real-time streaming with structured
-logging.
+## Features
 
-
-## Quick Start
-
-**Requirements:** Python 3.10+ and `pip install -r requirements.txt`
+- OAuth 2.0 Authentication (Code flow and PKCE flow)
+- Automatic flow detection based on environment configuration
+- WebSocket streaming with token refresh and reauthorization
+- Structured logging
 
 **Available Scripts:**
 
-- **Authorization Code Flow**  
-    → `auth/auth_sample.py`
+- **Authorization Code Flow** 
+    → `auth/auth_code_flow.py`
   
-- **Authorization Code with PKCE**  
-    → `auth/auth_sample_PKCE.py`
+- **PKCE Flow** 
+    → `auth/auth_pkce_flow.py`
   
-- **Basic Websocket Streaming Example**  
+- **Balance Streaming** with automatic token management  
   → `streaming/stream_balances.py`
 
 ## Setup
 
-1. **For Auth Samples:** Configure `.env` file (copy from `.env.example`) with your own application details. See **Developer Portal Setup** notes below. 
-2. **For Streaming:** Set `ACCESS_TOKEN` environment variable or enter when prompted
-
-
-## Authentication Samples
-
-Run OAuth 2.0 authentication flows to obtain access tokens:
-
-**Authorization Code Flow:**
+1. Install dependencies:
 
 ```bash
-python auth/auth_sample.py
+pip install -r requirements.txt
 ```
 
-**Authorization Code with PKCE:**
+2. Copy the environment example:
 
 ```bash
-python auth/auth_sample_PKCE.py
+cp .env.example .env
 ```
 
-Both samples will:
+3. Configure environment variables in `.env` with your own app details.
 
-- Open your browser for authentication
-- Exchange authorization code for access token
-- Display the access token for use in other samples
+   Register your application at: <https://www.developer.saxo/openapi/appmanagement>
 
-**Prerequisites:**
+   The application values should be those used in the .env file. Make sure the application type
+(code or PKCE) matches the flow you wish to use.
 
-- Configure your `.env` file with app credentials from developer portal
-- Ensure redirect URI matches your portal configuration
+## Usage
 
-## Balance Streaming
+### Quick Start - Balance Streaming
 
-Stream real-time balance updates via WebSocket:
+The main streaming script automatically detects your OAuth configuration and handles authentication
+(if set up in the .env file, otherwise manual token input is requested):
 
 ```bash
-export ACCESS_TOKEN="your_bearer_token"
-python streaming/stream_balances.py
+# Set GRANT_TYPE in .env to "code" or "pkce", then run:
+python3 streaming/stream_balances.py
 ```
 
-Features: Auto ClientKey retrieval, reconnection, structured logging.
+This will:
+- Automatically open your browser for OAuth authentication
+- Start streaming balance updates (TotalValue, CollateralAvailable, MarginAvailableForTrading)  
+- Refresh tokens every 5 minutes automatically
+- Reauthorize the WebSocket connection on token refresh
 
-This sample will not retrieve your access token for you. You can either adapt the authentication samples for this, or [use a 24 hour simulation token found on the developer portal.](https://www.developer.saxo/openapi/token)
+### Manual Authentication Testing
 
-## Developer Portal Setup
+You can run the authentication flows independently for testing:
 
-Register your application at: <https://www.developer.saxo/openapi/appmanagement>
+```bash
+# OAuth Code Flow (for server-side apps with client secret)
+python3 auth/auth_code_flow.py
 
-The application values should be those used in the .env file. Make sure the application type (code or PKCE) matches the sample flow you wish to use. 
+# PKCE Flow (for public clients, mobile apps)
+python3 auth/auth_pkce_flow.py
+```
 
+Both scripts will:
 
+1. Generate the authorization URL based on your `.env` configuration
+2. Automatically open your browser for authentication
+3. Exchange the authorization code for tokens
+4. Start automatic token refresh loop (every 300 seconds)
 
+## Stream History Logging
+
+The balance streaming script automatically logs all activity to JSON files in `stream_history/`:
+
+- `subscriptions.json` - Complete subscription lifecycle (snapshots, updates, heartbeats)
+- `control-messages.json` - System events (disconnects, resets, permanent disables)
+
+Files are automatically saved on app exit (Ctrl+C), subscription deletion, or connection events. All
+logging is thread-safe and git-ignored.
+
+## Architecture
+
+### Environment Configuration
+
+Configure your `.env` file with the required variables:
+
+```bash
+# OAuth Configuration
+APP_KEY=your_app_key_here
+APP_SECRET=your_app_secret_here  # Only required for Authorization Code flow
+AUTHORIZATION_ENDPOINT=https://sim.logonvalidation.net/authorize
+TOKEN_ENDPOINT=https://sim.logonvalidation.net/token
+REDIRECT_URLS=http://localhost:3000/callback
+
+# Flow Selection
+GRANT_TYPE=code  # Use "code" or "pkce"
+
+# API Configuration  
+OPEN_API_BASE_URL=https://gateway.saxobank.com/sim/openapi/
+```
+
+### Conditional Import System
+
+The streaming script only imports the authentication module it needs:
+
+- **GRANT_TYPE=code** → imports `auth_code_flow` only
+- **GRANT_TYPE=pkce** → imports `auth_pkce_flow` only  
+- **No GRANT_TYPE** → falls back to manual token input
+
+### Token Management
+
+The system includes:
+
+- Automatic token refresh every 5 minutes
+- WebSocket reauthorization on token refresh  
+- Connection recovery and error handling
+- Structured logging for monitoring
+- Smart memory usage with conditional imports

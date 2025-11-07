@@ -8,3 +8,6 @@ __pycache__/
 *.so
 .coverage
 .pytest_cache/
+
+# Stream history logging files
+stream_history/
