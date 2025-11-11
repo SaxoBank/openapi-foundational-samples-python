@@ -116,9 +116,7 @@ def exchange_code_for_tokens(authorization_code, redirect_url=None, **kwargs):
         "redirect_uri": redirect_url,
     }
     
-    logging.info("Exchanging authorization code for tokens using Code flow...")
     response = make_code_flow_token_request(data, **kwargs)
-    logging.info("Successfully obtained tokens from authorization code")
     return response
 
 
@@ -321,13 +319,20 @@ if __name__ == "__main__":
         print(f"\n✓ Success! Token response:")
         print(f"   Access Token: {tokens.get('access_token', 'N/A')[:20]}...")
         print(f"   Refresh Token: {tokens.get('refresh_token', 'N/A')[:20]}...")
-        print(f"   Expires In: {tokens.get('expires_in', 'N/A')} seconds")
+        expires_in = tokens.get('expires_in', 'N/A')
+        print(f"   Expires In: {expires_in} seconds")
         
         # Start automatic token refresh loop
-        refresh_interval_seconds = 300  # 5 minutes
         refresh_token = tokens.get('refresh_token')
         if refresh_token:
-            print(f"\n6. Starting automatic token refresh loop (every {refresh_interval_seconds} seconds)...")
+            # Calculate refresh interval as half the token's expires_in time
+            refresh_interval_seconds = 300  # Default 5 minutes
+            if isinstance(expires_in, int):
+                refresh_interval_seconds = max(60, expires_in // 2)  # At least 1 minute, but half of expires_in
+                print(f"\n6. Starting automatic token refresh loop (every {refresh_interval_seconds} seconds, based on token expiry)...")
+            else:
+                print(f"\n6. Starting automatic token refresh loop (every {refresh_interval_seconds} seconds, using default interval)...")
+            
             print("   Press Ctrl+C to stop the refresh loop")
             
             current_refresh_token = refresh_token
@@ -353,6 +358,13 @@ if __name__ == "__main__":
                         
                         expires_in = new_tokens.get('expires_in', 'N/A')
                         print(f"   Expires In: {expires_in} seconds")
+                        
+                        # Update refresh interval based on new token's expires_in
+                        if isinstance(expires_in, int):
+                            new_refresh_interval = max(60, expires_in // 2)  # At least 1 minute, but half of expires_in
+                            if new_refresh_interval != refresh_interval_seconds:
+                                print(f"   Updating refresh interval from {refresh_interval_seconds} to {new_refresh_interval} seconds")
+                                refresh_interval_seconds = new_refresh_interval
                         
                     except Exception as e:
                         print(f"   ✗ Token refresh failed: {e}")

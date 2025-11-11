@@ -8,6 +8,11 @@ Token Management & WebSocket Reauthorization:
 - Uses auth modules directly for token refresh operations
 - TokenManager class for automated token lifecycle management
 
+Subscription Management:
+- Automatic resubscription handling using ReplaceReferenceId for seamless transitions
+- Generates unique reference IDs with timestamp components to prevent reuse
+- Properly deletes old subscriptions when creating new ones during resubscription events
+
 Environment Variables:
 - GRANT_TYPE: Set to "Code" or "PKCE" for OAuth flow selection
 """
@@ -213,7 +218,6 @@ def save_stream_history_for_reference(reference_id):
     try:
         # Just save to the main stream_history files - no reference-specific folders
         save_stream_history()
-        logging.info(f"Stream history saved for {reference_id}")
     except Exception as e:
         logging.error(f"Failed to save stream history for {reference_id}: {e}")
 
@@ -234,16 +238,19 @@ def save_stream_history():
             control_file = os.path.join(logs_dir, "control-messages.json")
             with open(control_file, "w") as f:
                 json.dump(stream_history["control_messages"], f, indent=2)
-                
-        logging.info(f"Stream history saved to {logs_dir}/subscriptions.json and {logs_dir}/control-messages.json")
     except Exception as e:
         logging.error(f"Failed to save stream history: {e}")
 
 # Helper functions
 def generate_reference_id():
-    """Generate a random reference ID with 'balance-' prefix."""
-    random_string = ''.join(secrets.choice(string.ascii_lowercase + string.digits) for _ in range(8))
-    return f"balance-{random_string}"
+    """
+    Generate a unique reference ID with 'balance-' prefix.
+    
+    Uses timestamp + random string to ensure uniqueness across resubscriptions.
+    """
+    timestamp_suffix = str(int(time.time() * 1000))[-6:]  # Last 6 digits of milliseconds timestamp
+    random_string = ''.join(secrets.choice(string.ascii_lowercase + string.digits) for _ in range(6))
+    return f"balance-{timestamp_suffix}{random_string}"
 
 def get_client_key(token):
     """Fetch ClientKey from /clients/me endpoint."""
@@ -356,7 +363,8 @@ class TokenManager:
         Args:
             refresh_token (str): The refresh token for getting new access tokens
             context_id (str): WebSocket context ID for reauth
-            refresh_interval_seconds (int): Seconds between token refreshes (default: 5 minutes)
+            refresh_interval_seconds (int): Seconds between token refreshes. 
+                                          Recommended to set as half of token's expires_in value (default: 5 minutes)
         """
         self.refresh_token = refresh_token
         self.context_id = context_id
@@ -399,6 +407,14 @@ class TokenManager:
                         self.refresh_token = new_refresh_token
                         logging.debug("Refresh token updated")
                     
+                    # Update refresh interval based on new token's expires_in
+                    new_expires_in = new_tokens.get("expires_in")
+                    if new_expires_in:
+                        new_refresh_interval = max(60, new_expires_in // 2)  # At least 1 minute, but half of expires_in
+                        if new_refresh_interval != self.refresh_interval:
+                            logging.info(f"Updating refresh interval from {self.refresh_interval} to {new_refresh_interval} seconds")
+                            self.refresh_interval = new_refresh_interval
+                    
                     logging.info("Token refresh and WebSocket reauth completed")
                 else:
                     logging.error("Auto-refresh: Token refresh failed")
@@ -412,11 +428,11 @@ def authenticate():
     Uses OAuth flow if AUTH_AVAILABLE is True, otherwise falls back to manual input.
     
     Returns:
-        tuple: (access_token, refresh_token) or (access_token, None) if no refresh token available
+        tuple: (access_token, refresh_token, expires_in) or (access_token, None, None) if no refresh token available
     """
     if not AUTH_AVAILABLE:
         logging.warning("OAuth not configured - requesting manual token input")
-        return input("ACCESS_TOKEN: ").strip(), None
+        return input("ACCESS_TOKEN: ").strip(), None, None
     
     # OAuth is available and configured - start the flow
     try:
@@ -434,7 +450,7 @@ def authenticate():
     except Exception as e:
         logging.warning(f"OAuth flow failed: {e}")
         logging.warning("Falling back to manual ACCESS_TOKEN input")
-        return input("ACCESS_TOKEN: ").strip(), None
+        return input("ACCESS_TOKEN: ").strip(), None, None
 
 
 def run_oauth_flow_interactive(auth_module, flow_name):
@@ -543,6 +559,7 @@ def run_oauth_flow_interactive(auth_module, flow_name):
     
     access_token = tokens.get("access_token")
     refresh_token = tokens.get("refresh_token")
+    expires_in = tokens.get("expires_in")
     
     if not access_token:
         raise Exception("No access token in response")
@@ -553,16 +570,19 @@ def run_oauth_flow_interactive(auth_module, flow_name):
     logging.log(logging_utils.IMPORTANT_LEVEL_NUM, "Authentication completed successfully!")
     if refresh_token:
         logging.info("Refresh token obtained - automatic token refresh enabled")
+        if expires_in:
+            logging.info(f"Token expires in {expires_in} seconds")
     else:
         logging.warning("No refresh token received - automatic token refresh disabled")
     
-    return access_token, refresh_token
+    return access_token, refresh_token, expires_in
 
 
 # Ensure we have required tokens
 oauth_refresh_token = None
+token_expires_in = None
 if not config["ACCESS_TOKEN"]:
-    config["ACCESS_TOKEN"], oauth_refresh_token = authenticate()
+    config["ACCESS_TOKEN"], oauth_refresh_token, token_expires_in = authenticate()
 
 if not config["CLIENT_KEY"]:
     config["CLIENT_KEY"] = get_client_key(config["ACCESS_TOKEN"])
@@ -586,8 +606,6 @@ def subscribe_balances(context_id, reference_id):
                                headers={"Authorization": f"Bearer {config['ACCESS_TOKEN']}"}, 
                                timeout=15)
         if response.status_code == 201:
-            logging.info("Balance subscription successful")
-            
             # Process the snapshot from the 201 response
             snapshot_data = response.json().get("Snapshot", {})
             if snapshot_data:
@@ -602,7 +620,7 @@ def subscribe_balances(context_id, reference_id):
                 filtered_snapshot = format_balance_data(snapshot_data)
                 
                 if filtered_snapshot:
-                    logging.info(f"Balance subscription created (RefID: {reference_id}) - {filtered_snapshot}")
+                    logging.info(f"Subscription created (RefID: {reference_id}) - {filtered_snapshot}")
             
             return True
         logging.error(f"Subscription failed: {response.status_code}")
@@ -611,12 +629,25 @@ def subscribe_balances(context_id, reference_id):
     return False
 
 def resubscribe_balances(context_id, new_reference_id, old_reference_id):
-    """Resubscribe to balance updates using ReplaceReferenceId for seamless transition."""
+    """
+    Resubscribe to balance updates using ReplaceReferenceId for seamless transition.
+    
+    This function creates a new subscription with a new reference ID and automatically
+    deletes the old subscription using Saxo's ReplaceReferenceId mechanism.
+    
+    Args:
+        context_id (str): WebSocket context ID
+        new_reference_id (str): New unique reference ID for the subscription
+        old_reference_id (str): Old reference ID to be replaced and deleted
+    
+    Returns:
+        bool: True if resubscription was successful, False otherwise
+    """
     payload = {
         "Arguments": {"ClientKey": config["CLIENT_KEY"]}, 
         "ContextId": context_id, 
         "ReferenceId": new_reference_id,
-        "ReplaceReferenceId": old_reference_id
+        "ReplaceReferenceId": old_reference_id  # This automatically deletes the old subscription
     }
     try:
         response = requests.post(f"{config['BASE_URL']}/port/v1/balances/subscriptions", 
@@ -624,8 +655,6 @@ def resubscribe_balances(context_id, new_reference_id, old_reference_id):
                                headers={"Authorization": f"Bearer {config['ACCESS_TOKEN']}"}, 
                                timeout=15)
         if response.status_code == 201:
-            logging.info("Balance resubscription successful")
-            
             # Process the snapshot from the 201 response
             snapshot_data = response.json().get("Snapshot", {})
             if snapshot_data:
@@ -636,10 +665,11 @@ def resubscribe_balances(context_id, new_reference_id, old_reference_id):
                 filtered_snapshot = format_balance_data(snapshot_data)
                 
                 if filtered_snapshot:
-                    logging.info(f"Balance resubscription snapshot - {filtered_snapshot}")
+                    logging.info(f"Replaced {old_reference_id} with {new_reference_id} - {filtered_snapshot}")
             
             return True
-        logging.error(f"Resubscription failed: {response.status_code}")
+        else:
+            logging.error(f"Resubscription failed: {response.status_code} - {response.text}")
     except Exception as e:
         logging.error(f"Resubscription error: {e}")
     return False
@@ -708,15 +738,18 @@ def handle_message(ref_id, payload, message_id=None, expected_ref_id=None, ws=No
             sys.exit(1)  # Exit to force manual restart
         elif ref_id == "_resetsubscriptions":
             if not payload.get("TargetReferenceIds") or (expected_ref_id and expected_ref_id in payload.get("TargetReferenceIds", [])):
-                logging.warning("Resubscription required - creating new subscription")
-                # Save files for the old reference ID before replacing
-                if expected_ref_id:
-                    log_subscription_event(expected_ref_id, "deleted", None)  # This will trigger save_stream_history_for_reference
-                # Generate new reference ID and replace the old one
                 new_reference_id = generate_reference_id()
+                
+                # Use ReplaceReferenceId flow to seamlessly transition and delete old subscription
                 if resubscribe_balances(ws.context_id, new_reference_id, expected_ref_id):
+                    # Mark old subscription as deleted in history
+                    log_subscription_event(expected_ref_id, "deleted", {"reason": "replaced_by_resubscription", "new_reference_id": new_reference_id})
+                    
+                    # Update WebSocket to use new reference ID
                     ws.reference_id = new_reference_id
-                    logging.info(f"Resubscription successful - new RefID: {new_reference_id}")
+                else:
+                    logging.error(f"Resubscription failed for {expected_ref_id}")
+                    sys.exit(1)
         elif ref_id == "_heartbeat":
             # Log heartbeat activity
             if expected_ref_id:
@@ -758,18 +791,42 @@ def on_ws_message(ws, message):
 
 def on_ws_error(ws, error):
     logging.error(f"WebSocket error: {error}")
+    # Mark that we need to resubscribe due to error
+    ws.needs_resubscription = True
 
 def on_ws_close(ws, code, msg):
     if code != 1000:
-        logging.warning(f"WebSocket closed unexpectedly ({code})")
+        logging.warning(f"WebSocket closed unexpectedly (code: {code}, message: {msg})")
+        # Mark that we need to resubscribe due to unexpected close
+        ws.needs_resubscription = True
 
 def on_ws_open(ws):
-    logging.info("WebSocket connected")
-    if not subscribe_balances(ws.context_id, ws.reference_id):
-        logging.error("Failed to subscribe")
+    # Check if we need to resubscribe (after reconnection due to error)
+    if hasattr(ws, 'needs_resubscription') and ws.needs_resubscription and hasattr(ws, 'old_reference_id'):
+        old_ref_id = ws.old_reference_id
+        new_ref_id = generate_reference_id()
+        
+        # Use ReplaceReferenceId flow to seamlessly transition and delete old subscription
+        if resubscribe_balances(ws.context_id, new_ref_id, old_ref_id):
+            # Mark old subscription as deleted in history
+            log_subscription_event(old_ref_id, "deleted", {"reason": "replaced_after_reconnection", "new_reference_id": new_ref_id})
+            
+            # Update to use new reference ID
+            ws.reference_id = new_ref_id
+            ws.old_reference_id = None
+            ws.needs_resubscription = False
+        else:
+            logging.error(f"Failed to replace subscription after reconnection")
+            # Keep the flag set to retry on next connection
+    else:
+        # Initial subscription (not a reconnection)
+        if not subscribe_balances(ws.context_id, ws.reference_id):
+            logging.error("Failed to subscribe")
 
 def websocket_thread(context_id, reference_id, stop_event):
     """WebSocket connection with auto-reconnection."""
+    current_reference_id = reference_id
+    
     while not stop_event.is_set():
         url = f"{config['STREAM_URL']}/connect?contextId={context_id}"
         ws = websocket.WebSocketApp(
@@ -781,18 +838,26 @@ def websocket_thread(context_id, reference_id, stop_event):
             on_open=on_ws_open
         )
         ws.context_id = context_id
-        ws.reference_id = reference_id
+        ws.reference_id = current_reference_id
+        ws.needs_resubscription = False
+        ws.old_reference_id = None
         
-        logging.info("Connecting to streaming server...")
         try:
             ws.run_forever(ping_interval=30, ping_timeout=10)
         except KeyboardInterrupt:
             break
         except Exception as e:
             logging.error(f"Connection error: {e}")
+            ws.needs_resubscription = True
         
-        if not stop_event.is_set():
-            logging.info("Reconnecting in 5s...")
+        # If we need to resubscribe due to error, save the old reference ID
+        if not stop_event.is_set() and hasattr(ws, 'needs_resubscription') and ws.needs_resubscription:
+            # Store old reference ID for replacement on next connection
+            old_ref_id = ws.reference_id
+            ws.old_reference_id = old_ref_id
+            
+            time.sleep(5)
+        elif not stop_event.is_set():
             time.sleep(5)
 
 def main():
@@ -807,7 +872,15 @@ def main():
     token_manager = None
     if oauth_refresh_token and AUTH_AVAILABLE:
         try:
-            token_manager = TokenManager(oauth_refresh_token, context_id)
+            # Calculate refresh interval as half the token's expires_in time
+            refresh_interval = 300  # Default 5 minutes
+            if token_expires_in:
+                refresh_interval = max(60, token_expires_in // 2)  # At least 1 minute, but half of expires_in
+                logging.info(f"Token expires in {token_expires_in} seconds, setting refresh interval to {refresh_interval} seconds")
+            else:
+                logging.info(f"No expires_in received, using default refresh interval of {refresh_interval} seconds")
+            
+            token_manager = TokenManager(oauth_refresh_token, context_id, refresh_interval)
             token_manager.start_auto_refresh()
             logging.info("Token auto-refresh enabled")
         except Exception as e:
