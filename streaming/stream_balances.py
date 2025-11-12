@@ -797,27 +797,27 @@ def on_ws_error(ws, error):
 def on_ws_close(ws, code, msg):
     if code != 1000:
         logging.warning(f"WebSocket closed unexpectedly (code: {code}, message: {msg})")
-        # Mark that we need to resubscribe due to unexpected close
-        ws.needs_resubscription = True
+    # Always mark that we need to resubscribe, regardless of close code
+    # This ensures we generate a new reference ID on reconnection
+    ws.needs_resubscription = True
 
 def on_ws_open(ws):
     # Check if we need to resubscribe (after reconnection due to error)
-    if hasattr(ws, 'needs_resubscription') and ws.needs_resubscription and hasattr(ws, 'old_reference_id'):
+    if hasattr(ws, 'old_reference_id') and ws.old_reference_id:
         old_ref_id = ws.old_reference_id
-        new_ref_id = generate_reference_id()
+        new_ref_id = ws.reference_id  # Use the new reference ID that was already generated
         
         # Use ReplaceReferenceId flow to seamlessly transition and delete old subscription
         if resubscribe_balances(ws.context_id, new_ref_id, old_ref_id):
             # Mark old subscription as deleted in history
             log_subscription_event(old_ref_id, "deleted", {"reason": "replaced_after_reconnection", "new_reference_id": new_ref_id})
             
-            # Update to use new reference ID
-            ws.reference_id = new_ref_id
+            # Clear the old reference ID now that replacement is complete
             ws.old_reference_id = None
             ws.needs_resubscription = False
         else:
             logging.error(f"Failed to replace subscription after reconnection")
-            # Keep the flag set to retry on next connection
+            # Keep the old_reference_id to retry on next connection
     else:
         # Initial subscription (not a reconnection)
         if not subscribe_balances(ws.context_id, ws.reference_id):
@@ -826,6 +826,7 @@ def on_ws_open(ws):
 def websocket_thread(context_id, reference_id, stop_event):
     """WebSocket connection with auto-reconnection."""
     current_reference_id = reference_id
+    old_reference_id = None  # Track previous reference ID for replacement
     
     while not stop_event.is_set():
         url = f"{config['STREAM_URL']}/connect?contextId={context_id}"
@@ -840,7 +841,7 @@ def websocket_thread(context_id, reference_id, stop_event):
         ws.context_id = context_id
         ws.reference_id = current_reference_id
         ws.needs_resubscription = False
-        ws.old_reference_id = None
+        ws.old_reference_id = old_reference_id
         
         try:
             ws.run_forever(ping_interval=30, ping_timeout=10)
@@ -850,11 +851,13 @@ def websocket_thread(context_id, reference_id, stop_event):
             logging.error(f"Connection error: {e}")
             ws.needs_resubscription = True
         
-        # If we need to resubscribe due to error, save the old reference ID
+        # If we need to resubscribe due to error, generate new reference ID
         if not stop_event.is_set() and hasattr(ws, 'needs_resubscription') and ws.needs_resubscription:
-            # Store old reference ID for replacement on next connection
-            old_ref_id = ws.reference_id
-            ws.old_reference_id = old_ref_id
+            # Save the current reference ID as old (to be replaced)
+            old_reference_id = current_reference_id
+            
+            # Generate a new reference ID for the resubscription
+            current_reference_id = generate_reference_id()
             
             time.sleep(5)
         elif not stop_event.is_set():
