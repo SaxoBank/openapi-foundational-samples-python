@@ -189,6 +189,9 @@ def log_subscription_event(reference_id, event_type, data, message_id=None):
                 "data": data,
                 "message_id": message_id
             })
+            # Keep only the last 100 updates
+            if len(subscription["balance_updates"]) > 100:
+                subscription["balance_updates"] = subscription["balance_updates"][-100:]
             subscription["activity_flags"]["update_count"] += 1
             
         elif event_type == "heartbeat":
@@ -209,6 +212,9 @@ def log_control_message(ref_id, payload, message_id=None):
             "payload": payload,
             "message_id": message_id
         })
+        # Keep only the last 100 control messages
+        if len(stream_history["control_messages"]) > 100:
+            stream_history["control_messages"] = stream_history["control_messages"][-100:]
 
 def save_stream_history_for_reference(reference_id):
     """Save stream history for a specific reference ID to the main stream_history files."""
