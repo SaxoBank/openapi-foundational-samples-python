@@ -1,6 +1,7 @@
 # Saxo OpenAPI Python Authentication & Streaming
 
-Python implementation for Saxo Bank OpenAPI authentication and real-time streaming with automatic token management.
+Python implementation for Saxo Bank OpenAPI authentication and real-time streaming with automatic
+token management.
 
 ## Features
 
@@ -17,7 +18,8 @@ Python implementation for Saxo Bank OpenAPI authentication and real-time streami
 
 1. Install dependencies: `pip install -r requirements.txt`
 2. Copy environment example: `cp .env.example .env`
-3. Configure `.env` with your app credentials from <https://www.developer.saxo/openapi/appmanagement>
+3. Configure `.env` with your app credentials from
+<https://www.developer.saxo/openapi/appmanagement>
 
 ## Usage
 
@@ -29,7 +31,8 @@ Automatically detects OAuth configuration and handles authentication:
 python3 streaming/stream_balances.py
 ```
 
-Streams TotalValue, CollateralAvailable, and MarginAvailableForTrading with automatic token refresh at 85% of token lifetime.
+Streams TotalValue, CollateralAvailable, and MarginAvailableForTrading with automatic token refresh
+at 85% of token lifetime.
 
 ### Manual Authentication Testing
 
@@ -44,7 +47,8 @@ python3 auth/auth_pkce_flow.py  # Public clients, mobile apps
 
 Logs all activity to `stream_history/`:
 
-- `subscriptions.json` - Current WebSocket connection with all subscriptions (replaced on new connection)
+- `subscriptions.json` - Current WebSocket connection with all subscriptions (replaced on new
+connection)
 - `control-messages.json` - System control messages (last 50)
 
 Each subscription tracks: snapshot, last 50 messages, status (`active`, `replaced`, `deleted`).
