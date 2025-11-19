@@ -2,19 +2,15 @@
 """
 Saxo OpenAPI balance streaming with WebSocket binary protocol.
 
-Token Management & WebSocket Reauthorization:
-- Supports both OAuth Code flow and PKCE flow based on GRANT_TYPE environment variable
-- Automatic token refresh and WebSocket reauthorization using refresh token from OAuth flow
-- Uses auth modules directly for token refresh operations
-- TokenManager class for automated token lifecycle management
+Token Management:
+- Supports OAuth Code and PKCE flows (set GRANT_TYPE env var)
+- Auto token refresh and WebSocket reauth using refresh token
+- Imports retry logic from auth modules (3 retries, 85% refresh interval)
 
 Subscription Management:
-- Automatic resubscription handling using ReplaceReferenceId for seamless transitions
-- Generates unique reference IDs with timestamp components to prevent reuse
-- Properly deletes old subscriptions when creating new ones during resubscription events
-
-Environment Variables:
-- GRANT_TYPE: Set to "Code" or "PKCE" for OAuth flow selection
+- Auto resubscription using ReplaceReferenceId for seamless transitions
+- Unique reference IDs with timestamps to prevent reuse
+- Proper subscription deletion on resubscription events
 """
 
 import os
@@ -28,7 +24,6 @@ import secrets
 import string
 from datetime import datetime
 from dotenv import load_dotenv
-
 # Load environment and setup logging
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '.env'))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -46,15 +41,7 @@ else:
 TARGET_BALANCE_FIELDS = ["TotalValue", "CollateralAvailable", "MarginAvailableForTrading"]
 
 def format_balance_data(data):
-    """
-    Extract target balance fields and add currency.
-    
-    Args:
-        data (dict): Balance data containing various (many) fields
-    
-    Returns:
-        dict: Filtered balance data with target fields and currency
-    """
+    """Extract target balance fields and add currency."""
     filtered_data = {field: data[field] for field in TARGET_BALANCE_FIELDS if field in data}
     
     if filtered_data and account_currency:
@@ -63,7 +50,7 @@ def format_balance_data(data):
     return filtered_data
 
 def check_oauth_config():
-    """Check if required OAuth environment variables are available."""
+    """Check if required OAuth environment variables are configured."""
     # If no GRANT_TYPE is set, OAuth is not configured
     if not FLOW_TYPE:
         return False
@@ -87,16 +74,20 @@ def check_oauth_config():
 # Only import authentication modules based on environment configuration
 auth_code_flow = None
 auth_pkce_flow = None
+refresh_token_with_retry = None
+calculate_refresh_interval = None
 AUTH_AVAILABLE = False
 
 if check_oauth_config():
     try:
         if FLOW_TYPE == "code":
             from auth import auth_code_flow
+            from auth.auth_code_flow import refresh_token_with_retry, calculate_refresh_interval
             logging.debug("Imported auth_code_flow module")
             AUTH_AVAILABLE = True
         elif FLOW_TYPE == "pkce":
             from auth import auth_pkce_flow
+            from auth.auth_pkce_flow import refresh_token_with_retry, calculate_refresh_interval
             logging.debug("Imported auth_pkce_flow module")
             AUTH_AVAILABLE = True
         else:
@@ -294,7 +285,7 @@ def get_client_key(token):
             return response.json().get("ClientKey")
         logging.error(f"Failed to get ClientKey: {response.status_code}")
         if response.status_code == 404:
-            logging.error("The /port/v1/clients/me endpoint returned 404. Please verify your OPEN_API_BASE_URL is correct.")
+            logging.error("The /port/v1/clients/me endpoint returned 404. Try again.")
         elif response.status_code == 401:
             logging.error("Unauthorized: The access token may be invalid or expired.")
     except Exception as e:
@@ -303,28 +294,22 @@ def get_client_key(token):
 
 def refresh_token_and_reauth_websocket(refresh_token_value, context_id):
     """
-    Refresh access token and reauthorize WebSocket connection.
+    Refresh access token and reauthorize WebSocket (uses retry logic from auth module).
     
     Args:
-        refresh_token_value (str): The refresh token
-        context_id (str): WebSocket context ID for reauth
+        refresh_token_value: The refresh token
+        context_id: WebSocket context ID for reauth
     
     Returns:
-        dict or None: New token response if successful, None if failed
+        dict: New token response if successful, None if failed
     """
     if not AUTH_AVAILABLE:
         return None
     
-    try:
-        # Use the appropriate auth module directly
-        if FLOW_TYPE == "pkce" and auth_pkce_flow:
-            token_response = auth_pkce_flow.refresh_access_token(refresh_token_value)
-        elif FLOW_TYPE == "code" and auth_code_flow:
-            token_response = auth_code_flow.refresh_access_token(refresh_token_value)
-        else:
-            logging.error(f"Auth module not available for flow type: {FLOW_TYPE}")
-            return None
-        
+    # Use shared token refresh utility with built-in retry logic
+    token_response = refresh_token_with_retry(refresh_token_value)
+    
+    if token_response:
         new_access_token = token_response.get("access_token")
         if new_access_token:
             # Update the global config
@@ -339,25 +324,19 @@ def refresh_token_and_reauth_websocket(refresh_token_value, context_id):
         else:
             logging.error("No access token in refresh response")
             return None
-            
-    except Exception as e:
-        logging.error(f"Token refresh failed: {e}")
-        return None
+    
+    return None
 
 def reauth_websocket_connection(new_access_token, context_id):
     """
-    Re-authorize the WebSocket streaming connection with a new access token.
-    
-    This function sends a PUT request to the streaming server to update
-    the access token for an existing WebSocket connection before the
-    current token expires.
+    Reauthorize WebSocket with new access token before current token expires.
     
     Args:
-        new_access_token (str): The new access token to authorize
-        context_id (str): The context ID of the WebSocket connection
+        new_access_token: The new access token
+        context_id: WebSocket context ID
     
     Returns:
-        bool: True if reauth was successful (202 Accepted), False otherwise
+        bool: True if successful (202 Accepted), False otherwise
     """
     if not context_id:
         logging.error("No context ID provided for WebSocket reauth")
@@ -412,60 +391,53 @@ class TokenManager:
     def start_auto_refresh(self):
         """Start automatic token refresh in background thread."""
         if self.refresh_thread and self.refresh_thread.is_alive():
-            logging.warning("Token auto-refresh already running")
             return
             
         self.stop_event.clear()
         self.refresh_thread = threading.Thread(target=self._refresh_loop, daemon=True)
         self.refresh_thread.start()
-        logging.info(f"Token auto-refresh started (every {self.refresh_interval//60} minutes)")
+        logging.debug(f"Auto-refresh started (interval: {self.refresh_interval}s)")
     
     def stop_auto_refresh(self):
         """Stop automatic token refresh."""
         self.stop_event.set()
         if self.refresh_thread:
             self.refresh_thread.join(timeout=3)
-        logging.info("Token auto-refresh stopped")
     
     def _refresh_loop(self):
-        """Background token refresh loop."""
+        """Background token refresh loop (retry logic handled by auth module)."""
         while not self.stop_event.wait(self.refresh_interval):
-            try:
-                logging.info("Auto-refresh: Refreshing token and reauthorizing WebSocket...")
-                new_tokens = refresh_token_and_reauth_websocket(
-                    self.refresh_token, 
-                    self.context_id
-                )
+            new_tokens = refresh_token_and_reauth_websocket(
+                self.refresh_token, 
+                self.context_id
+            )
+            
+            if new_tokens:
+                # Update our stored refresh token if a new one was provided
+                new_refresh_token = new_tokens.get("refresh_token")
+                if new_refresh_token:
+                    self.refresh_token = new_refresh_token
+                    logging.debug("Refresh token updated")
                 
-                if new_tokens:
-                    # Update our stored refresh token if a new one was provided
-                    new_refresh_token = new_tokens.get("refresh_token")
-                    if new_refresh_token:
-                        self.refresh_token = new_refresh_token
-                        logging.debug("Refresh token updated")
-                    
-                    # Update refresh interval based on new token's expires_in
-                    new_expires_in = new_tokens.get("expires_in")
-                    if new_expires_in:
-                        new_refresh_interval = max(60, new_expires_in // 2)  # At least 1 minute, but half of expires_in
-                        if new_refresh_interval != self.refresh_interval:
-                            logging.info(f"Updating refresh interval from {self.refresh_interval} to {new_refresh_interval} seconds")
-                            self.refresh_interval = new_refresh_interval
-                    
-                    logging.info("Token refresh and WebSocket reauth completed")
-                else:
-                    logging.error("Auto-refresh: Token refresh failed")
-                    
-            except Exception as e:
-                logging.error(f"Auto-refresh: Error during token refresh: {e}")
+                # Update refresh interval based on new token's expires_in
+                new_expires_in = new_tokens.get("expires_in")
+                if new_expires_in:
+                    new_refresh_interval = calculate_refresh_interval(new_expires_in)
+                    if new_refresh_interval != self.refresh_interval:
+                        logging.info(f"Updating refresh interval from {self.refresh_interval} to {new_refresh_interval} seconds")
+                        self.refresh_interval = new_refresh_interval
+                
+            else:
+                # Retry logic is handled in refresh_token_with_retry()
+                logging.error("Token refresh failed. Stopping auto-refresh.")
+                break
 
 def authenticate():
     """
     Get access token through OAuth flow or manual input.
-    Uses OAuth flow if AUTH_AVAILABLE is True, otherwise falls back to manual input.
     
     Returns:
-        tuple: (access_token, refresh_token, expires_in) or (access_token, None, None) if no refresh token available
+        tuple: (access_token, refresh_token, expires_in) or (access_token, None, None)
     """
     if not AUTH_AVAILABLE:
         logging.warning("OAuth not configured - requesting manual token input")
@@ -610,9 +582,8 @@ def run_oauth_flow_interactive(auth_module, flow_name):
     
     logging.log(logging_utils.IMPORTANT_LEVEL_NUM, "Authentication completed successfully!")
     if refresh_token:
-        logging.info("Refresh token obtained - automatic token refresh enabled")
         if expires_in:
-            logging.info(f"Token expires in {expires_in} seconds")
+            logging.info(f"Token expires in {expires_in}s")
     else:
         logging.warning("No refresh token received - automatic token refresh disabled")
     
@@ -924,21 +895,17 @@ def main():
     token_manager = None
     if oauth_refresh_token and AUTH_AVAILABLE:
         try:
-            # Calculate refresh interval as half the token's expires_in time
+            # Calculate refresh interval as 85% of the token's expires_in time
             refresh_interval = 300  # Default 5 minutes
+            refresh_interval = calculate_refresh_interval(token_expires_in)
             if token_expires_in:
-                refresh_interval = max(60, token_expires_in // 2)  # At least 1 minute, but half of expires_in
-                logging.info(f"Token expires in {token_expires_in} seconds, setting refresh interval to {refresh_interval} seconds")
-            else:
-                logging.info(f"No expires_in received, using default refresh interval of {refresh_interval} seconds")
+                next_refresh_minutes = refresh_interval // 60
+                logging.info(f"Token auto-refresh enabled (next refresh in {refresh_interval}s / ~{next_refresh_minutes}m)")
             
             token_manager = TokenManager(oauth_refresh_token, context_id, refresh_interval)
             token_manager.start_auto_refresh()
-            logging.info("Token auto-refresh enabled")
         except Exception as e:
             logging.warning(f"Could not start token manager: {e}")
-    else:
-        logging.info("Token auto-refresh disabled (no refresh token available)")
     
     logging.log(logging_utils.IMPORTANT_LEVEL_NUM, "Balance streaming started. Press Ctrl+C to stop.")
     

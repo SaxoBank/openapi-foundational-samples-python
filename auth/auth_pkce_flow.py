@@ -1,6 +1,6 @@
 """
-OAuth 2.0 PKCE (Proof Key for Code Exchange) Flow implementation for Saxo OpenAPI.
-Use this for public clients (mobile apps, SPAs) that cannot securely store client secrets.
+OAuth 2.0 PKCE (Proof Key for Code Exchange) Flow for Saxo OpenAPI.
+For public clients (mobile apps, SPAs) that cannot securely store secrets.
 """
 
 import os
@@ -12,6 +12,7 @@ from urllib.parse import urlencode
 from dotenv import load_dotenv
 import logging
 import sys
+import time
 
 # Setup logging
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -19,9 +20,8 @@ from utils.logging_utils import setup_logging, raise_critical
 
 setup_logging()
 
-
 def load_pkce_flow_config():
-    """Load configuration for PKCE flow from environment variables."""
+    """Load PKCE flow config from environment."""
     load_dotenv()
     
     required_keys = ["APP_KEY", "TOKEN_ENDPOINT", "REDIRECT_URLS"]
@@ -43,10 +43,10 @@ def load_pkce_flow_config():
 
 def generate_pkce_challenge():
     """
-    Generate PKCE code verifier and code challenge for OAuth 2.0 PKCE flow.
+    Generate PKCE code verifier and challenge for OAuth 2.0 PKCE flow.
     
     Returns:
-        tuple: (code_verifier, code_challenge) strings
+        tuple: (code_verifier, code_challenge)
     """
     # Generate code verifier (43-128 characters, URL-safe)
     code_verifier = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode('utf-8').rstrip('=')
@@ -60,19 +60,15 @@ def generate_pkce_challenge():
 
 def make_pkce_flow_token_request(data, app_key=None, token_url=None):
     """
-    Make a token request using PKCE flow (client_id in body, no Basic auth).
+    Make token request using PKCE flow (client_id in body, no Basic auth).
     
     Args:
-        data (dict): Token request data (grant_type, code/refresh_token, etc.)
-        app_key (str, optional): Application key. If not provided, loads from env.
-        token_url (str, optional): Token endpoint URL. If not provided, loads from env.
+        data: Token request data (grant_type, code/refresh_token, etc.)
+        app_key: Application key (loads from env if not provided)
+        token_url: Token endpoint URL (loads from env if not provided)
     
     Returns:
-        dict: Token response from the server
-    
-    Raises:
-        ConnectionError: If the request fails
-        ValueError: If the response is invalid
+        dict: Token response from server
     """
     if not all([app_key, token_url]):
         config = load_pkce_flow_config()
@@ -110,16 +106,16 @@ def make_pkce_flow_token_request(data, app_key=None, token_url=None):
 
 def exchange_code_for_tokens(authorization_code, code_verifier, redirect_url=None, **kwargs):
     """
-    Exchange an authorization code for access and refresh tokens using PKCE flow.
+    Exchange authorization code for tokens using PKCE flow.
     
     Args:
-        authorization_code (str): The authorization code from OAuth callback
-        code_verifier (str): PKCE code verifier used in authorization request
-        redirect_url (str, optional): Redirect URI. If not provided, loads from env.
-        **kwargs: Additional arguments passed to make_pkce_flow_token_request
+        authorization_code: Authorization code from OAuth callback
+        code_verifier: PKCE code verifier from authorization request
+        redirect_url: Redirect URI (loads from env if not provided)
+        **kwargs: Additional arguments for make_pkce_flow_token_request
     
     Returns:
-        dict: Token response containing access_token, refresh_token, expires_in, etc.
+        dict: Token response with access_token, refresh_token, expires_in, etc.
     """
     if not code_verifier:
         raise ValueError("code_verifier is required for PKCE flow")
@@ -141,15 +137,15 @@ def exchange_code_for_tokens(authorization_code, code_verifier, redirect_url=Non
 
 def refresh_access_token(refresh_token, redirect_url=None, **kwargs):
     """
-    Use a refresh token to get new access and refresh tokens using PKCE flow.
+    Get new tokens using refresh token.
     
     Args:
-        refresh_token (str): The refresh token
-        redirect_url (str, optional): Redirect URI. If not provided, loads from env.
-        **kwargs: Additional arguments passed to make_pkce_flow_token_request
+        refresh_token: The refresh token
+        redirect_url: Redirect URI (loads from env if not provided)
+        **kwargs: Additional arguments for make_pkce_flow_token_request
     
     Returns:
-        dict: Token response containing new access_token, refresh_token, expires_in, etc.
+        dict: Token response with new access_token, refresh_token, expires_in, etc.
     """
     if not refresh_token:
         raise ValueError("Missing refresh_token. Cannot refresh tokens.")
@@ -164,10 +160,57 @@ def refresh_access_token(refresh_token, redirect_url=None, **kwargs):
         "redirect_uri": redirect_url,
     }
     
-    logging.info("Refreshing access token using PKCE flow...")
     response = make_pkce_flow_token_request(data, **kwargs)
-    logging.info("Successfully refreshed access token")
     return response
+
+
+def refresh_token_with_retry(refresh_token, max_retries=3, retry_delay=1):
+    """
+    Refresh OAuth token with retry logic (importable by other modules).
+    
+    Args:
+        refresh_token: The refresh token
+        max_retries: Maximum retry attempts (default: 3)
+        retry_delay: Seconds between retries (default: 1)
+    
+    Returns:
+        dict: Token response (access_token, refresh_token, expires_in) or None if failed
+    """
+    retry_count = 0
+    
+    while retry_count < max_retries:
+        try:
+            logging.info("Refreshing token...")
+            token_data = refresh_access_token(refresh_token)
+            logging.info("Token refresh successful")
+            return token_data
+                    
+        except Exception as e:
+            retry_count += 1
+            logging.error(f"Token refresh error: {e}")
+            if retry_count < max_retries:
+                time.sleep(retry_delay)
+    
+    logging.error(f"Max retries ({max_retries}) reached. Token refresh failed.")
+    return None
+
+
+def calculate_refresh_interval(expires_in, default=300, min_interval=30):
+    """
+    Calculate token refresh interval (importable by other modules).
+    Returns 85% of token lifetime.
+    
+    Args:
+        expires_in: Token lifetime in seconds
+        default: Default interval if expires_in not provided (default: 300)
+        min_interval: Minimum refresh interval (default: 60)
+    
+    Returns:
+        int: Refresh interval in seconds
+    """
+    if expires_in:
+        return max(min_interval, int(expires_in * 0.85))
+    return default
 
 
 def get_auth_url(app_key=None, redirect_url=None, authorization_endpoint=None, code_challenge=None):
@@ -374,10 +417,10 @@ if __name__ == "__main__":
         # Start automatic token refresh loop
         refresh_token = tokens.get('refresh_token')
         if refresh_token:
-            # Calculate refresh interval as half the token's expires_in time
-            refresh_interval_seconds = 300  # Default 5 minutes
+            # Calculate refresh interval as 85% of the token's expires_in time
+            refresh_interval_seconds = calculate_refresh_interval(expires_in if isinstance(expires_in, int) else None)
+            
             if isinstance(expires_in, int):
-                refresh_interval_seconds = max(60, expires_in // 2)  # At least 1 minute, but half of expires_in
                 print(f"\n6. Starting automatic token refresh loop (every {refresh_interval_seconds} seconds, based on token expiry)...")
             else:
                 print(f"\n6. Starting automatic token refresh loop (every {refresh_interval_seconds} seconds, using default interval)...")
@@ -394,31 +437,36 @@ if __name__ == "__main__":
                     time.sleep(refresh_interval_seconds)
                     
                     print(f"   Refreshing tokens now...")
-                    try:
-                        new_tokens = refresh_access_token(current_refresh_token)
-                        print(f"   ✓ Token refresh completed!")
-                        print(f"   New Access Token: {new_tokens.get('access_token', 'N/A')[:20]}...")
-                        
-                        # Update refresh token if a new one is provided
-                        new_refresh_token = new_tokens.get('refresh_token')
-                        if new_refresh_token:
-                            current_refresh_token = new_refresh_token
-                            print(f"   New Refresh Token: {new_refresh_token[:20]}...")
-                        
-                        expires_in = new_tokens.get('expires_in', 'N/A')
-                        print(f"   Expires In: {expires_in} seconds")
-                        
-                        # Update refresh interval based on new token's expires_in
-                        if isinstance(expires_in, int):
-                            new_refresh_interval = max(60, expires_in // 2)  # At least 1 minute, but half of expires_in
-                            if new_refresh_interval != refresh_interval_seconds:
-                                print(f"   Updating refresh interval from {refresh_interval_seconds} to {new_refresh_interval} seconds")
-                                refresh_interval_seconds = new_refresh_interval
-                        
-                    except Exception as e:
-                        print(f"   ✗ Token refresh failed: {e}")
-                        print(f"   Stopping refresh loop due to error")
+                    new_tokens = refresh_token_with_retry(current_refresh_token)
+                    
+                    if new_tokens is None:
+                        print(f"   ✗ Token refresh failed after all retries. Stopping refresh loop.")
+                        print(f"   Manual re-authentication required.")
                         break
+                    
+                    print(f"   ✓ Token refresh completed!")
+                    print(f"   New Access Token: {new_tokens.get('access_token', 'N/A')[:20]}...")
+                    
+                    # Update refresh token if a new one is provided
+                    new_refresh_token = new_tokens.get('refresh_token')
+                    if new_refresh_token:
+                        current_refresh_token = new_refresh_token
+                        print(f"   New Refresh Token: {new_refresh_token[:20]}...")
+                    
+                    expires_in = new_tokens.get('expires_in', 'N/A')
+                    print(f"   Expires In: {expires_in} seconds")
+                    
+                    # Update refresh interval based on new token's expires_in
+                    if isinstance(expires_in, int):
+                        new_refresh_interval = calculate_refresh_interval(expires_in)
+                        if new_refresh_interval != refresh_interval_seconds:
+                            print(f"   Updating refresh interval from {refresh_interval_seconds} to {new_refresh_interval} seconds")
+                            refresh_interval_seconds = new_refresh_interval
+                        else:
+                            print(f"   Retrying in 1 second...")
+                            time.sleep(1)
+                            refresh_count -= 1  # Don't count failed attempts
+                            continue
                         
             except KeyboardInterrupt:
                 print(f"\n   Token refresh loop stopped by user (completed {refresh_count-1} refreshes)")
