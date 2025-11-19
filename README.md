@@ -3,23 +3,25 @@
 Python implementation for Saxo Bank OpenAPI authentication and real-time streaming with automatic
 token management.
 
-## Features
+## Requirements
 
-- OAuth 2.0 (Authorization Code & PKCE flows)
-- WebSocket streaming with automatic token refresh
-- JSON logging to `stream_history/`
+- Python 3.7+
+- `python-dotenv`
+- `requests`
+- `websocket-client`
 
-**Scripts:**
-- `auth/auth_code_flow.py` - Authorization Code flow
-- `auth/auth_pkce_flow.py` - PKCE flow
-- `streaming/stream_balances.py` - Balance streaming with auto token management
+## Available Scripts
+
+- `auth/auth_code_flow.py` - OAuth Authorization Code flow (server-side apps with client secret)
+- `auth/auth_pkce_flow.py` - OAuth PKCE flow (public clients, mobile apps)
+- `streaming/stream_balances.py` - Real-time balance streaming with automatic token management
 
 ## Setup
 
 1. Install dependencies: `pip install -r requirements.txt`
-2. Copy environment example: `cp .env.example .env`
-3. Configure `.env` with your app credentials from
-<https://www.developer.saxo/openapi/appmanagement>
+2. Configure `.env` file (copy from `.env.example`) with credentials from 
+[developer portal](https://www.developer.saxo/openapi/appmanagement)
+3. For streaming: Set `ACCESS_TOKEN` or configure `GRANT_TYPE` for OAuth flow
 
 ## Usage
 
