@@ -151,47 +151,66 @@ account_currency = None
 
 # JSON logging for stream history
 stream_history = {
-    "subscriptions": {},
+    "connections": {},  # Grouped by context_id
     "control_messages": []
 }
 history_lock = threading.Lock()
 
-def log_subscription_event(reference_id, event_type, data, message_id=None):
+def log_subscription_event(reference_id, event_type, data, message_id=None, context_id=None):
     """Log subscription events to JSON history."""
     with history_lock:
-        if reference_id not in stream_history["subscriptions"]:
-            stream_history["subscriptions"][reference_id] = {
+        # Require context_id for proper tracking
+        if not context_id:
+            logging.warning(f"No context_id provided for subscription event: {reference_id}")
+            return
+        
+        # Replace with new context - only keep the most recent WebSocket connection
+        if context_id not in stream_history["connections"]:
+            stream_history["connections"] = {
+                context_id: {
+                    "created_at": datetime.utcnow().isoformat(),
+                    "subscriptions": {}
+                }
+            }
+        
+        subscriptions = stream_history["connections"][context_id]["subscriptions"]
+        
+        if reference_id not in subscriptions:
+            subscriptions[reference_id] = {
                 "created_at": datetime.utcnow().isoformat(),
                 "initial_snapshot": None,
-                "balance_updates": [],
+                "messages": [],
                 "activity_flags": {
                     "has_snapshot": False,
                     "update_count": 0,
+                    "reference_id_count": 1,
                     "last_heartbeat": None
                 },
                 "status": "active"
             }
+        else:
+            # Increment reference_id_count for existing reference_id
+            subscriptions[reference_id]["activity_flags"]["reference_id_count"] += 1
         
-        subscription = stream_history["subscriptions"][reference_id]
+        subscription = subscriptions[reference_id]
         timestamp = datetime.utcnow().isoformat()
         
         if event_type == "snapshot":
             subscription["initial_snapshot"] = {
                 "timestamp": timestamp,
-                "data": data,
-                "message_id": message_id
+                "data": data
             }
             subscription["activity_flags"]["has_snapshot"] = True
             
         elif event_type == "update":
-            subscription["balance_updates"].append({
+            subscription["messages"].append({
                 "timestamp": timestamp,
                 "data": data,
                 "message_id": message_id
             })
-            # Keep only the last 100 updates
-            if len(subscription["balance_updates"]) > 100:
-                subscription["balance_updates"] = subscription["balance_updates"][-100:]
+            # Keep only the last 50 messages
+            if len(subscription["messages"]) > 50:
+                subscription["messages"] = subscription["messages"][-50:]
             subscription["activity_flags"]["update_count"] += 1
             
         elif event_type == "heartbeat":
@@ -200,14 +219,23 @@ def log_subscription_event(reference_id, event_type, data, message_id=None):
         elif event_type == "deleted":
             subscription["status"] = "deleted"
             subscription["deleted_at"] = timestamp
-            # Save reference-specific files when a subscription is terminated
-            save_stream_history_for_reference(reference_id)
+            # Save history when a subscription is terminated
+            save_stream_history()
+            
+        elif event_type == "replaced":
+            subscription["status"] = "replaced"
+            subscription["replaced_at"] = timestamp
+            if data:
+                subscription["replacement_info"] = data
+            # Save history when a subscription is replaced
+            save_stream_history()
 
-def log_control_message(ref_id, payload, message_id=None):
+def log_control_message(ref_id, payload, message_id=None, context_id=None):
     """Log control messages to JSON history."""
     with history_lock:
         stream_history["control_messages"].append({
             "timestamp": datetime.utcnow().isoformat(),
+            "context_id": context_id,
             "reference_id": ref_id,
             "payload": payload,
             "message_id": message_id
@@ -235,12 +263,12 @@ def save_stream_history():
         os.makedirs(logs_dir, exist_ok=True)
         
         with history_lock:
-            # Save subscriptions data
-            subscription_file = os.path.join(logs_dir, "subscriptions.json")
-            with open(subscription_file, "w") as f:
-                json.dump(stream_history["subscriptions"], f, indent=2)
+            # Save subscriptions data directly (grouped by context_id)
+            subscriptions_file = os.path.join(logs_dir, "subscriptions.json")
+            with open(subscriptions_file, "w") as f:
+                json.dump(stream_history["connections"], f, indent=2)
             
-            # Save control messages  
+            # Save control messages directly
             control_file = os.path.join(logs_dir, "control-messages.json")
             with open(control_file, "w") as f:
                 json.dump(stream_history["control_messages"], f, indent=2)
@@ -266,6 +294,10 @@ def get_client_key(token):
         if response.status_code == 200:
             return response.json().get("ClientKey")
         logging.error(f"Failed to get ClientKey: {response.status_code}")
+        if response.status_code == 404:
+            logging.error("The /port/v1/clients/me endpoint returned 404. Please verify your OPEN_API_BASE_URL is correct.")
+        elif response.status_code == 401:
+            logging.error("Unauthorized: The access token may be invalid or expired.")
     except Exception as e:
         logging.error(f"ClientKey request failed: {e}")
     return None
@@ -438,7 +470,9 @@ def authenticate():
     """
     if not AUTH_AVAILABLE:
         logging.warning("OAuth not configured - requesting manual token input")
-        return input("ACCESS_TOKEN: ").strip(), None, None
+        manual_token = input("ACCESS_TOKEN: ").strip()
+        config["ACCESS_TOKEN"] = manual_token
+        return manual_token, None, None
     
     # OAuth is available and configured - start the flow
     try:
@@ -456,7 +490,9 @@ def authenticate():
     except Exception as e:
         logging.warning(f"OAuth flow failed: {e}")
         logging.warning("Falling back to manual ACCESS_TOKEN input")
-        return input("ACCESS_TOKEN: ").strip(), None, None
+        manual_token = input("ACCESS_TOKEN: ").strip()
+        config["ACCESS_TOKEN"] = manual_token
+        return manual_token, None, None
 
 
 def run_oauth_flow_interactive(auth_module, flow_name):
@@ -590,11 +626,16 @@ token_expires_in = None
 if not config["ACCESS_TOKEN"]:
     config["ACCESS_TOKEN"], oauth_refresh_token, token_expires_in = authenticate()
 
+# Verify we have a valid access token before proceeding
+if not config["ACCESS_TOKEN"]:
+    logging.error("Failed to obtain access token")
+    sys.exit(1)
+
 if not config["CLIENT_KEY"]:
     config["CLIENT_KEY"] = get_client_key(config["ACCESS_TOKEN"])
 
-if not config["ACCESS_TOKEN"] or not config["CLIENT_KEY"]:
-    logging.error("Failed to get required tokens")
+if not config["CLIENT_KEY"]:
+    logging.error("Failed to obtain ClientKey - cannot proceed with streaming")
     sys.exit(1)
 
 def subscribe_balances(context_id, reference_id):
@@ -620,7 +661,7 @@ def subscribe_balances(context_id, reference_id):
                     account_currency = snapshot_data.get("Currency", "")
                 
                 # Log snapshot to JSON history
-                log_subscription_event(reference_id, "snapshot", snapshot_data)
+                log_subscription_event(reference_id, "snapshot", snapshot_data, context_id=context_id)
                 
                 # Show only the target fields from snapshot
                 filtered_snapshot = format_balance_data(snapshot_data)
@@ -665,7 +706,7 @@ def resubscribe_balances(context_id, new_reference_id, old_reference_id):
             snapshot_data = response.json().get("Snapshot", {})
             if snapshot_data:
                 # Log snapshot for new subscription
-                log_subscription_event(new_reference_id, "snapshot", snapshot_data)
+                log_subscription_event(new_reference_id, "snapshot", snapshot_data, context_id=context_id)
                 
                 # Show only the target fields from snapshot
                 filtered_snapshot = format_balance_data(snapshot_data)
@@ -729,10 +770,13 @@ def handle_message(ref_id, payload, message_id=None, expected_ref_id=None, ws=No
     if not isinstance(payload, dict):
         return
     
+    # Get context_id from websocket if available
+    context_id = ws.context_id if ws and hasattr(ws, 'context_id') else None
+    
     # Handle control messages
     if ref_id.startswith('_'):
         # Log all control messages
-        log_control_message(ref_id, payload, message_id)
+        log_control_message(ref_id, payload, message_id, context_id)
         
         if ref_id == "_disconnect":
             logging.error("WebSocket disconnected by server. You must create a new login session and re-create the websocket and subscriptions.")
@@ -748,8 +792,8 @@ def handle_message(ref_id, payload, message_id=None, expected_ref_id=None, ws=No
                 
                 # Use ReplaceReferenceId flow to seamlessly transition and delete old subscription
                 if resubscribe_balances(ws.context_id, new_reference_id, expected_ref_id):
-                    # Mark old subscription as deleted in history
-                    log_subscription_event(expected_ref_id, "deleted", {"reason": "replaced_by_resubscription", "new_reference_id": new_reference_id})
+                    # Mark old subscription as replaced in history
+                    log_subscription_event(expected_ref_id, "replaced", {"reason": "replaced_by_resubscription", "new_reference_id": new_reference_id}, context_id=context_id)
                     
                     # Update WebSocket to use new reference ID
                     ws.reference_id = new_reference_id
@@ -759,7 +803,7 @@ def handle_message(ref_id, payload, message_id=None, expected_ref_id=None, ws=No
         elif ref_id == "_heartbeat":
             # Log heartbeat activity
             if expected_ref_id:
-                log_subscription_event(expected_ref_id, "heartbeat", payload, message_id)
+                log_subscription_event(expected_ref_id, "heartbeat", payload, message_id, context_id)
                 
             if payload.get("Reason") == "SubscriptionPermanentlyDisabled":
                 originating_ref_id = payload.get("OriginatingReferenceId")
@@ -779,7 +823,7 @@ def handle_message(ref_id, payload, message_id=None, expected_ref_id=None, ws=No
         
         if isinstance(data, dict):
             # Log balance update to JSON history
-            log_subscription_event(ref_id, "update", data, message_id)
+            log_subscription_event(ref_id, "update", data, message_id, context_id)
             
             updates = format_balance_data(data)
             
@@ -815,8 +859,8 @@ def on_ws_open(ws):
         
         # Use ReplaceReferenceId flow to seamlessly transition and delete old subscription
         if resubscribe_balances(ws.context_id, new_ref_id, old_ref_id):
-            # Mark old subscription as deleted in history
-            log_subscription_event(old_ref_id, "deleted", {"reason": "replaced_after_reconnection", "new_reference_id": new_ref_id})
+            # Mark old subscription as replaced in history
+            log_subscription_event(old_ref_id, "replaced", {"reason": "replaced_after_reconnection", "new_reference_id": new_ref_id}, context_id=ws.context_id)
             
             # Clear the old reference ID now that replacement is complete
             ws.old_reference_id = None
@@ -915,11 +959,6 @@ def main():
         
         # Save stream history before exit
         save_stream_history()
-        
-        # Save reference-specific files for all active subscriptions
-        with history_lock:
-            for ref_id in stream_history["subscriptions"].keys():
-                save_stream_history_for_reference(ref_id)
 
 if __name__ == "__main__":
     main()

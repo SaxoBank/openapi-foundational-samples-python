@@ -83,11 +83,10 @@ Both scripts will:
 
 The balance streaming script automatically logs all activity to JSON files in `stream_history/`:
 
-- `subscriptions.json` - Complete subscription lifecycle (snapshots, updates, heartbeats)
-- `control-messages.json` - System events (disconnects, resets, permanent disables)
+- **`subscriptions.json`** - Most recent WebSocket connection with all its subscriptions (replaced on each new connection)
+- **`control-messages.json`** - System control messages (disconnects, resets, heartbeats)
 
-Files are automatically saved on app exit (Ctrl+C), subscription deletion, or connection events. All
-logging is thread-safe and git-ignored.
+Each subscription tracks snapshot, last 50 messages, and status (`active`, `replaced`, or `deleted`). Files save immediately on state changes. All logging is thread-safe and git-ignored.
 
 ## Architecture
 
