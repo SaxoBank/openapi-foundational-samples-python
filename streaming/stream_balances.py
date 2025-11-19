@@ -240,9 +240,9 @@ def log_control_message(ref_id, payload, message_id=None, context_id=None):
             "payload": payload,
             "message_id": message_id
         })
-        # Keep only the last 100 control messages
-        if len(stream_history["control_messages"]) > 100:
-            stream_history["control_messages"] = stream_history["control_messages"][-100:]
+        # Keep only the last 50 control messages
+        if len(stream_history["control_messages"]) > 50:
+            stream_history["control_messages"] = stream_history["control_messages"][-50:]
 
 def save_stream_history_for_reference(reference_id):
     """Save stream history for a specific reference ID to the main stream_history files."""
