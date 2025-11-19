@@ -169,6 +169,7 @@ def log_subscription_event(reference_id, event_type, data, message_id=None, cont
             stream_history["connections"] = {
                 context_id: {
                     "created_at": datetime.utcnow().isoformat(),
+                    "reference_id_count": 0,
                     "subscriptions": {}
                 }
             }
@@ -183,14 +184,12 @@ def log_subscription_event(reference_id, event_type, data, message_id=None, cont
                 "activity_flags": {
                     "has_snapshot": False,
                     "update_count": 0,
-                    "reference_id_count": 1,
                     "last_heartbeat": None
                 },
                 "status": "active"
             }
-        else:
-            # Increment reference_id_count for existing reference_id
-            subscriptions[reference_id]["activity_flags"]["reference_id_count"] += 1
+            # Update reference_id_count to reflect the number of unique reference IDs
+            stream_history["connections"][context_id]["reference_id_count"] = len(subscriptions)
         
         subscription = subscriptions[reference_id]
         timestamp = datetime.utcnow().isoformat()
