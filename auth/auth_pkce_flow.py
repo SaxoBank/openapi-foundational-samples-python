@@ -16,7 +16,7 @@ import time
 
 # Setup logging
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from utils.logging_utils import setup_logging, raise_critical
+from utils.logging_utils import setup_logging, raise_critical, IMPORTANT_LEVEL_NUM
 
 setup_logging()
 
@@ -308,8 +308,8 @@ if __name__ == "__main__":
     from http.server import BaseHTTPRequestHandler, HTTPServer
     from urllib.parse import urlparse, parse_qs
     
-    print("OAuth 2.0 PKCE Flow (for public clients)")
-    print("=" * 45)
+    logging.log(IMPORTANT_LEVEL_NUM, "OAuth 2.0 PKCE Flow (for public clients)")
+    logging.log(IMPORTANT_LEVEL_NUM, "=" * 45)
     
     # Global variables for HTTP server
     auth_code = None
@@ -370,13 +370,13 @@ if __name__ == "__main__":
         port = parsed.port if parsed.port else (443 if parsed.scheme == 'https' else 80)
         
         if port in [80, 443]:
-            print(f"Warning: Using port {port} may require root privileges")
+            logging.warning(f"Using port {port} may require root privileges")
         
         # Generate and print the OAuth authorization URL
         auth_url, global_code_verifier = get_auth_url()
-        print(f"\nOAuth Authorization URL:")
-        print(f"\nFollow URL and log in to get tokens")
-        print(f"{auth_url}")
+        logging.log(IMPORTANT_LEVEL_NUM, "OAuth Authorization URL:")
+        logging.log(IMPORTANT_LEVEL_NUM, f"Follow URL and log in to get tokens")
+        logging.log(IMPORTANT_LEVEL_NUM, f"{auth_url}")
         
         # Start HTTP server
         server = HTTPServer(('', port), AuthHandler)
@@ -386,7 +386,7 @@ if __name__ == "__main__":
 
         
         # Wait for authorization code
-        print(f"\nWaiting for authorization code...")
+        logging.info("Waiting for authorization code...")
         timeout = 300  # 5 minutes
         start_time = time.time()
         
@@ -396,22 +396,22 @@ if __name__ == "__main__":
         server.shutdown()
         
         if server_error:
-            print(f"\nError: {server_error}")
+            logging.error(f"Error: {server_error}")
             exit(1)
         elif not auth_code:
-            print(f"\nTimeout: No authorization code received within {timeout} seconds")
+            logging.error(f"Timeout: No authorization code received within {timeout} seconds")
             exit(1)
         
         # Exchange code for tokens
-        print(f"\n✓ Authorization code received, exchanging for tokens...")
-        print(f"   Using code verifier: {global_code_verifier[:20]}...")
+        logging.log(IMPORTANT_LEVEL_NUM, "Authorization code received, exchanging for tokens...")
+        logging.info(f"   Using code verifier: {global_code_verifier[:20]}...")
         tokens = exchange_code_for_tokens(auth_code, global_code_verifier)
         
-        print(f"\n✓ Success! Token response:")
-        print(f"   Access Token: {tokens.get('access_token', 'N/A')}")
-        print(f"   Refresh Token: {tokens.get('refresh_token', 'N/A')}")
+        logging.log(IMPORTANT_LEVEL_NUM, "Success! Token response:")
+        logging.info(f"   Access Token: {tokens.get('access_token', 'N/A')}")
+        logging.info(f"   Refresh Token: {tokens.get('refresh_token', 'N/A')}")
         expires_in = tokens.get('expires_in', 'N/A')
-        print(f"   Expires In: {expires_in} seconds")
+        logging.info(f"   Expires In: {expires_in} seconds")
         
         # Start automatic token refresh loop
         refresh_token = tokens.get('refresh_token')
@@ -420,11 +420,11 @@ if __name__ == "__main__":
             refresh_interval_seconds = calculate_refresh_interval(expires_in if isinstance(expires_in, int) else None)
             
             if isinstance(expires_in, int):
-                print(f"\nStarting automatic token refresh loop (every {refresh_interval_seconds} seconds, based on token expiry)...")
+                logging.log(IMPORTANT_LEVEL_NUM, f"Starting automatic token refresh loop (every {refresh_interval_seconds} seconds, based on token expiry)...")
             else:
-                print(f"\nStarting automatic token refresh loop (every {refresh_interval_seconds} seconds, using default interval)...")
+                logging.log(IMPORTANT_LEVEL_NUM, f"Starting automatic token refresh loop (every {refresh_interval_seconds} seconds, using default interval)...")
             
-            print("   Press Ctrl+C to stop the refresh loop")
+            logging.info("   Press Ctrl+C to stop the refresh loop")
             
             current_refresh_token = refresh_token
             refresh_count = 0
@@ -432,46 +432,46 @@ if __name__ == "__main__":
             try:
                 while True:
                     refresh_count += 1
-                    print(f"\n   Refresh #{refresh_count} - Waiting {refresh_interval_seconds} seconds...")
+                    logging.info(f"   Refresh #{refresh_count} - Waiting {refresh_interval_seconds} seconds...")
                     time.sleep(refresh_interval_seconds)
                     
-                    print(f"   Refreshing tokens now...")
+                    logging.info("   Refreshing tokens now...")
                     new_tokens = refresh_token_with_retry(current_refresh_token)
                     
                     if new_tokens is None:
-                        print(f"   ✗ Token refresh failed after all retries. Stopping refresh loop.")
-                        print(f"   Manual re-authentication required.")
+                        logging.error("   Token refresh failed after all retries. Stopping refresh loop.")
+                        logging.error("   Manual re-authentication required.")
                         break
                     
-                    print(f"   ✓ Token refresh completed!")
-                    print(f"   New Access Token: {new_tokens.get('access_token', 'N/A')}")
+                    logging.log(IMPORTANT_LEVEL_NUM, "   Token refresh completed!")
+                    logging.info(f"   New Access Token: {new_tokens.get('access_token', 'N/A')}")
                     
                     # Update refresh token if a new one is provided
                     new_refresh_token = new_tokens.get('refresh_token')
                     if new_refresh_token:
                         current_refresh_token = new_refresh_token
-                        print(f"   New Refresh Token: {new_refresh_token}")
+                        logging.info(f"   New Refresh Token: {new_refresh_token}")
                     
                     expires_in = new_tokens.get('expires_in', 'N/A')
-                    print(f"   Expires In: {expires_in} seconds")
+                    logging.info(f"   Expires In: {expires_in} seconds")
                     
                     # Update refresh interval based on new token's expires_in
                     if isinstance(expires_in, int):
                         new_refresh_interval = calculate_refresh_interval(expires_in)
                         if new_refresh_interval != refresh_interval_seconds:
-                            print(f"   Updating refresh interval from {refresh_interval_seconds} to {new_refresh_interval} seconds")
+                            logging.info(f"   Updating refresh interval from {refresh_interval_seconds} to {new_refresh_interval} seconds")
                             refresh_interval_seconds = new_refresh_interval
                         else:
-                            print(f"   Retrying in 1 second...")
+                            logging.info("   Retrying in 1 second...")
                             time.sleep(1)
                             refresh_count -= 1  # Don't count failed attempts
                             continue
                         
             except KeyboardInterrupt:
-                print(f"\n   Token refresh loop stopped by user (completed {refresh_count-1} refreshes)")
+                logging.info(f"   Token refresh loop stopped by user (completed {refresh_count-1} refreshes)")
         else:
-            print("\n6. No refresh token received - skipping automatic refresh")
+            logging.warning("No refresh token received - skipping automatic refresh")
         
     except Exception as e:
-        print(f"\nError: {e}")
+        logging.error(f"Error: {e}")
         exit(1)
