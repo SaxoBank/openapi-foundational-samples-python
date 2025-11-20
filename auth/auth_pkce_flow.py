@@ -403,14 +403,13 @@ if __name__ == "__main__":
             exit(1)
         
         # Exchange code for tokens
-        print(f"\n✓ Authorization code received!")
-        print(f"5. Exchanging code for tokens...")
+        print(f"\n✓ Authorization code received, exchanging for tokens...")
         print(f"   Using code verifier: {global_code_verifier[:20]}...")
         tokens = exchange_code_for_tokens(auth_code, global_code_verifier)
         
         print(f"\n✓ Success! Token response:")
-        print(f"   Access Token: {tokens.get('access_token', 'N/A')[:20]}...")
-        print(f"   Refresh Token: {tokens.get('refresh_token', 'N/A')[:20]}...")
+        print(f"   Access Token: {tokens.get('access_token', 'N/A')}")
+        print(f"   Refresh Token: {tokens.get('refresh_token', 'N/A')}")
         expires_in = tokens.get('expires_in', 'N/A')
         print(f"   Expires In: {expires_in} seconds")
         
@@ -421,9 +420,9 @@ if __name__ == "__main__":
             refresh_interval_seconds = calculate_refresh_interval(expires_in if isinstance(expires_in, int) else None)
             
             if isinstance(expires_in, int):
-                print(f"\n6. Starting automatic token refresh loop (every {refresh_interval_seconds} seconds, based on token expiry)...")
+                print(f"\nStarting automatic token refresh loop (every {refresh_interval_seconds} seconds, based on token expiry)...")
             else:
-                print(f"\n6. Starting automatic token refresh loop (every {refresh_interval_seconds} seconds, using default interval)...")
+                print(f"\nStarting automatic token refresh loop (every {refresh_interval_seconds} seconds, using default interval)...")
             
             print("   Press Ctrl+C to stop the refresh loop")
             
@@ -445,13 +444,13 @@ if __name__ == "__main__":
                         break
                     
                     print(f"   ✓ Token refresh completed!")
-                    print(f"   New Access Token: {new_tokens.get('access_token', 'N/A')[:20]}...")
+                    print(f"   New Access Token: {new_tokens.get('access_token', 'N/A')}")
                     
                     # Update refresh token if a new one is provided
                     new_refresh_token = new_tokens.get('refresh_token')
                     if new_refresh_token:
                         current_refresh_token = new_refresh_token
-                        print(f"   New Refresh Token: {new_refresh_token[:20]}...")
+                        print(f"   New Refresh Token: {new_refresh_token}")
                     
                     expires_in = new_tokens.get('expires_in', 'N/A')
                     print(f"   Expires In: {expires_in} seconds")
