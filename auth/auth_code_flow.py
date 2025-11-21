@@ -263,6 +263,15 @@ if __name__ == "__main__":
     from http.server import BaseHTTPRequestHandler, HTTPServer
     from urllib.parse import urlparse, parse_qs
     
+    # Check GRANT_TYPE matches this script (only when run directly)
+    grant_type = os.getenv("GRANT_TYPE")
+    if grant_type and grant_type.lower() != "code":
+        logging.error(f"GRANT_TYPE is set to '{grant_type}' but this is the Authorization Code Flow script.")
+        logging.error("Please either:")
+        logging.error("  1. Set GRANT_TYPE=code in .env file")
+        logging.error("  2. Use auth_pkce_flow.py instead")
+        sys.exit(1)
+    
     logging.log(IMPORTANT_LEVEL_NUM, "OAuth 2.0 Authorization Code Flow")
     logging.log(IMPORTANT_LEVEL_NUM, "=" * 40)
     
