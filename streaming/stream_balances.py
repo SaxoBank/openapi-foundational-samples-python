@@ -436,34 +436,44 @@ def authenticate():
     """
     Get access token through OAuth flow or manual input.
     
+    Priority:
+    1. ACCESS_TOKEN from .env (if set, use it directly - skip OAuth)
+    2. GRANT_TYPE=code → OAuth Code flow
+    3. GRANT_TYPE=pkce → OAuth PKCE flow
+    4. None of above → Console prompt
+    
     Returns:
         tuple: (access_token, refresh_token, expires_in) or (access_token, None, None)
     """
-    if not AUTH_AVAILABLE:
-        logging.warning("OAuth not configured - requesting manual token input")
-        manual_token = input("ACCESS_TOKEN: ").strip()
-        config["ACCESS_TOKEN"] = manual_token
-        return manual_token, None, None
+    # Priority 1: Check if ACCESS_TOKEN is already in .env
+    if config.get("ACCESS_TOKEN"):
+        logging.info("Using ACCESS_TOKEN from .env file")
+        return config["ACCESS_TOKEN"], None, None
     
-    # OAuth is available and configured - start the flow
-    try:
-        logging.info(f"Using OAuth {FLOW_TYPE.upper()} flow")
-        logging.info("Starting OAuth authentication...")
-        
-        # Use the auth module that was imported based on environment
-        if FLOW_TYPE == "code" and auth_code_flow:
-            return run_oauth_flow_interactive(auth_code_flow, "Authorization Code")
-        elif FLOW_TYPE == "pkce" and auth_pkce_flow:
-            return run_oauth_flow_interactive(auth_pkce_flow, "PKCE")
-        else:
-            raise Exception(f"Auth module not available for flow type: {FLOW_TYPE}")
+    # Priority 2-3: Try OAuth flows based on GRANT_TYPE
+    if AUTH_AVAILABLE and FLOW_TYPE:
+        try:
+            logging.info(f"Using OAuth {FLOW_TYPE.upper()} flow")
+            logging.info("Starting OAuth authentication...")
             
-    except Exception as e:
-        logging.warning(f"OAuth flow failed: {e}")
-        logging.warning("Falling back to manual ACCESS_TOKEN input")
-        manual_token = input("ACCESS_TOKEN: ").strip()
-        config["ACCESS_TOKEN"] = manual_token
-        return manual_token, None, None
+            # Use the auth module that was imported based on environment
+            if FLOW_TYPE == "code" and auth_code_flow:
+                return run_oauth_flow_interactive(auth_code_flow, "Authorization Code")
+            elif FLOW_TYPE == "pkce" and auth_pkce_flow:
+                return run_oauth_flow_interactive(auth_pkce_flow, "PKCE")
+            else:
+                raise Exception(f"Auth module not available for flow type: {FLOW_TYPE}")
+                
+        except Exception as e:
+            logging.warning(f"OAuth flow failed: {e}")
+            logging.warning("Falling back to manual ACCESS_TOKEN input")
+    
+    # Priority 4: Console prompt (fallback)
+    if not AUTH_AVAILABLE or not FLOW_TYPE:
+        logging.warning("OAuth not configured - requesting manual token input")
+    
+    manual_token = input("ACCESS_TOKEN: ").strip()
+    return manual_token, None, None
 
 
 def run_oauth_flow_interactive(auth_module, flow_name):
