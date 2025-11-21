@@ -222,13 +222,7 @@ def get_auth_url(app_key=None, redirect_url=None, authorization_endpoint=None, c
         redirect_url (str, optional): Redirect URI. If not provided, loads from env.
         authorization_endpoint (str, optional): Auth endpoint. If not provided, loads from env.
         code_challenge (str, optional): PKCE code challenge. Auto-generated if not provided.
-        OAuth Authorization URL:
-    https://live.saxobank.com/sim/openapi/authorize?...
     
-    1. Starting local server on port 8080...
-    2. Opening browser to http://localhost:8080
-    3. You'll be redirected to the OAuth authorization URL above
-    4. After authorization, the code will be captured automatically
     Returns:
         tuple: (URL, code_verifier) - Save code_verifier for token exchange!
     """
@@ -376,7 +370,7 @@ if __name__ == "__main__":
             raise EnvironmentError("REDIRECT_URLS not configured in .env file")
         
         parsed = urlparse(redirect_url)
-        port = parsed.port if parsed.port else (443 if parsed.scheme == 'https' else 80)
+        port = parsed.port if parsed.port else 3000
         
         if port in [80, 443]:
             logging.warning(f"Using port {port} may require root privileges")

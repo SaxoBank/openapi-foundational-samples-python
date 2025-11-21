@@ -331,7 +331,7 @@ if __name__ == "__main__":
             raise EnvironmentError("REDIRECT_URLS not configured in .env file")
         
         parsed = urlparse(redirect_url)
-        port = parsed.port if parsed.port else (443 if parsed.scheme == 'https' else 80)
+        port = parsed.port if parsed.port else 3000
         
         if port in [80, 443]:
             logging.warning(f"Using port {port} may require root privileges")

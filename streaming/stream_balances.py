@@ -3,8 +3,8 @@
 Saxo OpenAPI balance streaming with WebSocket binary protocol.
 
 Token Management:
-- Supports OAuth Code and PKCE flows (set GRANT_TYPE env var)
-- Auto token refresh and WebSocket reauth using refresh token
+- Supports OAuth Code and PKCE flows (set GRANT_TYPE env var) or direct ACCESS_TOKEN
+- Auto token refresh and WebSocket reauth using refresh token (OAuth only)
 - Imports retry logic from auth modules (3 retries, 85% refresh interval)
 
 Subscription Management:
@@ -35,7 +35,7 @@ FLOW_TYPE = os.getenv("GRANT_TYPE")
 if FLOW_TYPE:
     FLOW_TYPE = FLOW_TYPE.lower()
 else:
-    FLOW_TYPE = None  # Will trigger manual auth if no GRANT_TYPE is set
+    FLOW_TYPE = None  # Will use ACCESS_TOKEN from .env or prompt for manual input
 
 # Target fields for balance streaming - used in multiple places
 TARGET_BALANCE_FIELDS = ["TotalValue", "CollateralAvailable", "MarginAvailableForTrading"]
@@ -380,7 +380,7 @@ class TokenManager:
             refresh_token (str): The refresh token for getting new access tokens
             context_id (str): WebSocket context ID for reauth
             refresh_interval_seconds (int): Seconds between token refreshes. 
-                                          Recommended to set as half of token's expires_in value (default: 5 minutes)
+                                          Recommended to set as 85% of token's expires_in value (default: 5 minutes)
         """
         self.refresh_token = refresh_token
         self.context_id = context_id
@@ -539,7 +539,7 @@ def run_oauth_flow_interactive(auth_module, flow_name):
     # Parse redirect URL to get port - reuse from environment file
     redirect_url = os.getenv("REDIRECT_URLS")
     parsed = urlparse(redirect_url)
-    port = parsed.port if parsed.port else (443 if parsed.scheme == 'https' else 80)
+    port = parsed.port if parsed.port else 3000
     
     if port in [80, 443]:
         logging.warning(f"Using port {port} - may require root privileges")
