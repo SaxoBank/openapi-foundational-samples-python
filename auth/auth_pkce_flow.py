@@ -302,6 +302,9 @@ if __name__ == "__main__":
     from http.server import BaseHTTPRequestHandler, HTTPServer
     from urllib.parse import urlparse, parse_qs
     
+    # Load environment variables first
+    load_dotenv()
+    
     # Check GRANT_TYPE matches this script (only when run directly)
     grant_type = os.getenv("GRANT_TYPE")
     if grant_type and grant_type.lower() != "pkce":
