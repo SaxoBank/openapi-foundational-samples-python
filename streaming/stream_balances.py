@@ -121,8 +121,8 @@ def load_config():
     
     # Determine streaming URL based on environment
     if "gateway.saxobank.com/sim" in base_url:
-        stream_url = "wss://streaming.saxobank.com/sim/openapi/streamingws"
-        reauth_url = "https://streaming.saxobank.com/sim/openapi/streamingws"
+        stream_url = "wss://sim-streaming.saxobank.com/sim/oapi/streaming/ws"
+        reauth_url = "https://sim-streaming.saxobank.com/sim/oapi/streaming/ws"
     elif "gateway.saxobank.com/openapi" in base_url:
         stream_url = "wss://live-streaming.saxobank.com/openapi/streaming/ws"
         reauth_url = "https://live-streaming.saxobank.com/openapi/streaming/ws"
