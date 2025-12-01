@@ -22,7 +22,7 @@ import requests
 import logging
 import secrets
 import string
-from datetime import datetime
+from datetime import datetime, timezone
 from dotenv import load_dotenv
 # Load environment and setup logging
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '.env'))
@@ -159,7 +159,7 @@ def log_subscription_event(reference_id, event_type, data, message_id=None, cont
         if context_id not in stream_history["connections"]:
             stream_history["connections"] = {
                 context_id: {
-                    "created_at": datetime.utcnow().isoformat(),
+                    "created_at": datetime.now(timezone.utc).isoformat(),
                     "reference_id_count": 0,
                     "subscriptions": {}
                 }
@@ -169,7 +169,7 @@ def log_subscription_event(reference_id, event_type, data, message_id=None, cont
         
         if reference_id not in subscriptions:
             subscriptions[reference_id] = {
-                "created_at": datetime.utcnow().isoformat(),
+                "created_at": datetime.now(timezone.utc).isoformat(),
                 "initial_snapshot": None,
                 "messages": [],
                 "activity_flags": {
@@ -183,7 +183,7 @@ def log_subscription_event(reference_id, event_type, data, message_id=None, cont
             stream_history["connections"][context_id]["reference_id_count"] = len(subscriptions)
         
         subscription = subscriptions[reference_id]
-        timestamp = datetime.utcnow().isoformat()
+        timestamp = datetime.now(timezone.utc).isoformat()
         
         if event_type == "snapshot":
             subscription["initial_snapshot"] = {
@@ -224,7 +224,7 @@ def log_control_message(ref_id, payload, message_id=None, context_id=None):
     """Log control messages to JSON history."""
     with history_lock:
         stream_history["control_messages"].append({
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "context_id": context_id,
             "reference_id": ref_id,
             "payload": payload,
