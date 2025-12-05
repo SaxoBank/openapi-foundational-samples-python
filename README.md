@@ -39,15 +39,6 @@ APP_SECRET=your_app_secret_here # Only for Authorization Code flow
 
 ## Usage
 
-### Authentication
-
-Run OAuth 2.0 flows to obtain access tokens:
-
-```bash
-python3 auth/auth_code_flow.py  # Authorization Code Flow
-python3 auth/auth_pkce_flow.py  # Authorization Code with PKCE
-```
-
 ### Balance Streaming
 
 Automatically detects OAuth configuration and handles authentication to stream real-time balance
@@ -82,6 +73,15 @@ connection)
 - `control-messages.json` - System control messages (last 50)
 
 Each subscription tracks: snapshot, last 50 messages, status (`active`, `replaced`, `deleted`).
+
+### Authentication
+
+The OAuth 2.0 flow samples can also be run independently in order to obtain access tokens:
+
+```bash
+python3 auth/auth_code_flow.py  # Authorization Code Flow
+python3 auth/auth_pkce_flow.py  # Authorization Code with PKCE
+```
 
 ## App Registration
 
