@@ -33,11 +33,14 @@ def load_code_flow_config():
             "Please check your .env file."
         )
     
+    # Parse first redirect URL if multiple are provided (comma-separated)
+    redirect_url = config["REDIRECT_URLS"].split(',')[0].strip()
+    
     return {
         "APP_KEY": config["APP_KEY"],
         "APP_SECRET": config["APP_SECRET"],
         "TOKEN_URL": config["TOKEN_ENDPOINT"],
-        "REDIRECT_URL": config["REDIRECT_URLS"]
+        "REDIRECT_URL": redirect_url
     }
 
 
@@ -210,7 +213,8 @@ def get_auth_url(app_key=None, redirect_url=None, authorization_endpoint=None):
     load_dotenv()
     
     app_key = app_key or os.getenv("APP_KEY")
-    redirect_url = redirect_url or os.getenv("REDIRECT_URLS")
+    # Parse first redirect URL if multiple are provided (comma-separated)
+    redirect_url = redirect_url or (os.getenv("REDIRECT_URLS") or '').split(',')[0].strip()
     authorization_endpoint = authorization_endpoint or os.getenv("AUTHORIZATION_ENDPOINT")
     
     if not all([app_key, redirect_url, authorization_endpoint]):
@@ -327,11 +331,12 @@ if __name__ == "__main__":
             pass
     
     try:
-        # Parse redirect URL to get port
+        # Parse redirect URL to get port (use first if multiple are provided)
         load_dotenv()
-        redirect_url = os.getenv("REDIRECT_URLS")
-        if not redirect_url:
+        redirect_urls = os.getenv("REDIRECT_URLS")
+        if not redirect_urls:
             raise EnvironmentError("REDIRECT_URLS not configured in .env file")
+        redirect_url = redirect_urls.split(',')[0].strip()
         
         parsed = urlparse(redirect_url)
         port = parsed.port if parsed.port else 3000

@@ -60,7 +60,7 @@ def check_oauth_config():
     auth_endpoint = os.getenv("AUTHORIZATION_ENDPOINT")
     token_endpoint = os.getenv("TOKEN_ENDPOINT")
     
-    # Basic OAuth requirements
+    # Basic OAuth requirements (check raw REDIRECT_URLS before parsing)
     if not all([app_key, redirect_urls, auth_endpoint, token_endpoint]):
         return False
     
@@ -536,8 +536,9 @@ def run_oauth_flow_interactive(auth_module, flow_name):
         def log_message(self, format, *args):
             pass  # Suppress HTTP server logs
     
-    # Parse redirect URL to get port - reuse from environment file
-    redirect_url = os.getenv("REDIRECT_URLS")
+    # Parse redirect URL to get port - reuse from environment file (use first if multiple)
+    redirect_urls = os.getenv("REDIRECT_URLS")
+    redirect_url = redirect_urls.split(',')[0].strip() if redirect_urls else None
     parsed = urlparse(redirect_url)
     port = parsed.port if parsed.port else 3000
     
