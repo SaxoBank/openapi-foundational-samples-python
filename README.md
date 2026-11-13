@@ -1,7 +1,7 @@
-# Saxo OpenAPI Python Authentication & Streaming
+# Saxo OpenAPI Python Samples
 
-Python implementation for Saxo Bank OpenAPI authentication and real-time streaming with automatic
-token management.
+Python samples for Saxo Bank OpenAPI authentication, real-time streaming with automatic
+token management, and Extended Trading Hours (ETH).
 
 ## Quick Start
 
@@ -18,6 +18,7 @@ token management.
 - **Authorization Code Flow** → `auth/auth_code_flow.py`
 - **Authorization Code with PKCE** → `auth/auth_pkce_flow.py`
 - **WebSocket Streaming** → `streaming/stream_balances.py`
+- **Extended Trading Hours** → [Eligibility, prices, orders, balances and charts](extended_hours/README.md)
 
 ## Setup
 
@@ -38,6 +39,13 @@ APP_SECRET=your_app_secret_here # Only for Authorization Code flow
 ```
 
 ## Usage
+
+### Extended Trading Hours
+
+See the [ETH samples and field guide](extended_hours/README.md) for client and instrument
+eligibility, pre/post-market prices, limit-order preview and precheck, explicit order
+placement, portfolio valuations, and charts. Order examples default to a local preview;
+API calls use `ACCESS_TOKEN` from `.env` or prompt for a token.
 
 ### Balance Streaming
 
